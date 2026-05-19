@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Upload, X } from "lucide-react";
+import { FileText, Upload, X } from "lucide-react";
 import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { storage } from "@/lib/firebase/client";
 import { Card } from "@/components/ui/Card";
@@ -62,6 +62,7 @@ export default function SubmitPage() {
 
 function SubmitForm() {
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [phase, setPhase] = useState<
@@ -70,6 +71,17 @@ function SubmitForm() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Build (and tear down) a blob URL for image previews.
+  useEffect(() => {
+    if (!file || !file.type.startsWith("image/")) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const {
     register,
@@ -243,7 +255,17 @@ function SubmitForm() {
               className="hidden"
             />
             {file ? (
-              <div className="space-y-1">
+              <div className="space-y-2">
+                {previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={previewUrl}
+                    alt={file.name}
+                    className="mx-auto max-h-48 rounded-sm border border-border bg-white object-contain"
+                  />
+                ) : (
+                  <FileText className="size-10 mx-auto text-warm-gray" />
+                )}
                 <div className="text-xs text-ink truncate" title={file.name}>
                   ✓ {file.name}
                 </div>
@@ -256,7 +278,7 @@ function SubmitForm() {
                     e.preventDefault();
                     clearFile();
                   }}
-                  className="inline-flex items-center gap-1 mt-2 text-[11px] text-warm-gray hover:text-ink"
+                  className="inline-flex items-center gap-1 text-[11px] text-warm-gray hover:text-ink"
                 >
                   <X className="size-3" />
                   다른 파일 선택

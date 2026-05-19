@@ -27,6 +27,9 @@ function parseDateMaybe(yyyymmdd: string | null): Timestamp | null {
 export const extractFromPoster = onObjectFinalized(
   {
     region: "asia-northeast3",
+    // Explicit bucket — auto-discovery picks the wrong default for projects
+    // on the new firebasestorage.app domain.
+    bucket: "ballet-d0d4c.firebasestorage.app",
     secrets: [OPENAI_KEY],
     memory: "512MiB",
     timeoutSeconds: 60,
