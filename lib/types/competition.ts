@@ -33,7 +33,16 @@ export interface Competition {
   aiCollectedAt: Timestamp;
   publishedAt?: Timestamp;
   lastVerifiedAt?: Timestamp;
+  lastUpdatedAt?: Timestamp;
+  // Set by editors / admins as they move the doc through the lifecycle.
+  editorId?: string;
+  reviewedAt?: Timestamp;
+  adminId?: string;
+  approvedBy?: string;
   notes?: string;
+  // Set by the AI ingestion pipeline (T6). Optional until that lands.
+  aiConfidence?: number;
+  aiFieldNotes?: Record<string, string>;
 }
 
 export const CATEGORY_LABELS: Record<CompetitionCategory, string> = {

@@ -53,10 +53,14 @@ service cloud.firestore {
       allow update: if role() == 'SUPER_ADMIN';
     }
 
-    // ─── Edit logs (Cloud Functions only) ───
+    // ─── Edit logs ───
+    // Editors append their own logs client-side. Logs are append-only; no
+    // updates or deletes. Cloud Functions may also write here in T7+.
     match /editLogs/{id} {
       allow read: if isEditor();
-      allow write: if false;
+      allow create: if isEditor()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // ─── User submissions queue ───

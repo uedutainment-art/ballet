@@ -91,11 +91,7 @@ export async function listUrgentPublished(n: number): Promise<Competition[]> {
   }
 }
 
-// Placeholder until Cloud Functions write to editLogs in T5.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function listRecentEdits(n = 5): Promise<unknown[]> {
-  return [];
-}
+export { fetchRecentEditLogs as listRecentEdits } from "@/lib/firebase/editLogs";
 
 export async function approveCompetition(
   id: string,
