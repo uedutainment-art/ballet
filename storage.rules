@@ -11,6 +11,14 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*|application/pdf');
     }
 
+    // Anonymous /submit page uploads (T6a). Public write, no read — operators
+    // only access via Storage Console. Spam mitigation (reCAPTCHA) lands in M5.
+    match /submissions/anonymous/{file=**} {
+      allow read: if false;
+      allow write: if request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
     // Curated posters (public read; Cloud Functions write only)
     match /posters/{file=**} {
       allow read: if true;

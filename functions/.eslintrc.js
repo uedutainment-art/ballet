@@ -26,5 +26,9 @@ module.exports = {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
     "indent": ["error", 2],
+    // Relax Google preset rules that aren't part of our convention.
+    "require-jsdoc": "off",
+    "valid-jsdoc": "off",
+    "max-len": "off",
   },
 };

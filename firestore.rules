@@ -69,5 +69,12 @@ service cloud.firestore {
       allow read, update: if isEditor();
       allow delete: if isAdmin();
     }
+
+    // ─── AI extraction failures (T6a) ───
+    // Cloud Functions write here via Admin SDK; editors read for triage.
+    match /_failures/{id} {
+      allow read: if isEditor();
+      allow write: if false;
+    }
   }
 }
