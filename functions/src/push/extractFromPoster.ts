@@ -54,15 +54,22 @@ export const extractFromPoster = onObjectFinalized(
       submittedByEmail: customMetadata.submittedByEmail,
     });
 
-    // Signed URL the OpenAI API can fetch on its end.
+    // Download the image bytes and inline them as a base64 data URL. This
+    // avoids needing iam.serviceAccounts.signBlob permission (signed URLs),
+    // and is one network hop fewer than letting OpenAI pull from Storage.
     const file = getStorage().bucket(bucketName).file(filePath);
-    const [signedUrl] = await file.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    const [buffer] = await file.download();
+    const base64 = buffer.toString("base64");
+    const imageMime = contentType || "image/jpeg";
+    const dataUrl = `data:${imageMime};base64,${base64}`;
+
+    logger.info("[extract] image fetched", {
+      bytes: buffer.length,
+      mime: imageMime,
     });
 
     const result = await extractCompetitionFromImage(
-      signedUrl,
+      dataUrl,
       OPENAI_KEY.value(),
     );
 
