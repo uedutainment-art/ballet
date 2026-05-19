@@ -7,3 +7,5 @@
  */
 
 export {extractFromPoster} from "./push/extractFromPoster";
+export {pullCrawlerScheduled} from "./pull/scheduler";
+export {pullCrawlerManual} from "./pull/manualTrigger";

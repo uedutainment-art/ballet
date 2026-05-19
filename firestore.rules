@@ -76,5 +76,12 @@ service cloud.firestore {
       allow read: if isEditor();
       allow write: if false;
     }
+
+    // ─── Pipeline run metadata (T6b) ───
+    // _meta/lastPullRun, etc. Written by Functions; editors read for dashboard.
+    match /_meta/{id} {
+      allow read: if isEditor();
+      allow write: if false;
+    }
   }
 }

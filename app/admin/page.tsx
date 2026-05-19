@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { doc, onSnapshot } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { Play, RefreshCw, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { db, functions } from "@/lib/firebase/client";
 import {
   countByStatus,
   listRecentEdits,
   listUrgentPublished,
 } from "@/lib/firebase/admin-queries";
+import { Button } from "@/components/ui/Button";
 import { DDayBadge } from "@/components/public/DDayBadge";
 import { formatDate, toDate } from "@/lib/format";
+import { isSuperAdmin } from "@/lib/types/user";
 import type { Competition } from "@/lib/types/competition";
 import type { ContentStatus } from "@/lib/types/status";
 import type { EditLog } from "@/lib/types/editLog";
@@ -92,6 +98,8 @@ export default function AdminDashboard() {
           disabled
         />
       </div>
+
+      <PullCrawlerSection />
 
       <section>
         <h2 className="text-sm font-medium text-ink mb-3">최근 검수 활동</h2>
@@ -210,6 +218,146 @@ function timeAgo(d: Date): string {
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}일 전`;
   return formatDate(d);
+}
+
+type PullRunSummary = {
+  finishedAt?: string;
+  newDrafts?: number;
+  totalExtracted?: number;
+  bySource?: Array<{
+    source: string;
+    newDrafts: number;
+    itemsExtracted: number;
+    ok: boolean;
+    error?: string;
+  }>;
+};
+
+function PullCrawlerSection() {
+  const { userDoc } = useAuth();
+  const [lastRun, setLastRun] = useState<PullRunSummary | null>(null);
+  const [running, setRunning] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const canRun = isSuperAdmin(userDoc?.role);
+
+  useEffect(() => {
+    const ref = doc(db, "_meta", "lastPullRun");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        setLastRun(snap.exists() ? (snap.data() as PullRunSummary) : null);
+      },
+      (err) => {
+        // _meta is editor-readable; surface only in console.
+        console.error("[admin] _meta/lastPullRun listen failed:", err);
+      },
+    );
+    return unsub;
+  }, []);
+
+  const run = useCallback(async () => {
+    if (running) return;
+    setRunning(true);
+    setToast(null);
+    try {
+      const callable = httpsCallable<unknown, PullRunSummary>(
+        functions,
+        "pullCrawlerManual",
+      );
+      const res = await callable();
+      const data = res.data;
+      setToast(
+        `완료 — 새 DRAFT ${data.newDrafts ?? 0}건, 총 추출 ${data.totalExtracted ?? 0}건`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "실행 실패";
+      setToast(msg);
+    } finally {
+      setRunning(false);
+      setTimeout(() => setToast(null), 4000);
+    }
+  }, [running]);
+
+  return (
+    <section>
+      <h2 className="text-sm font-medium text-ink mb-3">AI 자동 수집</h2>
+      <div className="bg-white border border-border rounded-md p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-3">
+            <Sparkles className="size-4 text-gold mt-0.5" />
+            <div>
+              <div className="text-sm text-ink">
+                Pull 크롤러 — 협회 사이트 5곳을 매주 월요일 자동 수집
+              </div>
+              <div className="mt-1 text-[11px] text-warm-gray">
+                {lastRun?.finishedAt
+                  ? `마지막 실행: ${formatRunWhen(lastRun.finishedAt)} · 새 DRAFT ${lastRun.newDrafts ?? 0}건 / 총 추출 ${lastRun.totalExtracted ?? 0}건`
+                  : "한 번도 실행되지 않았어요"}
+              </div>
+            </div>
+          </div>
+          {canRun ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={run}
+              disabled={running}
+            >
+              {running ? (
+                <>
+                  <RefreshCw className="size-3 mr-1.5 animate-spin" />
+                  실행 중…
+                </>
+              ) : (
+                <>
+                  <Play className="size-3 mr-1.5" />
+                  지금 실행
+                </>
+              )}
+            </Button>
+          ) : (
+            <span className="text-[11px] text-warm-gray">
+              SUPER_ADMIN만 수동 실행
+            </span>
+          )}
+        </div>
+
+        {lastRun?.bySource && lastRun.bySource.length > 0 ? (
+          <ul className="border-t border-border pt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
+            {lastRun.bySource.map((s) => (
+              <li
+                key={s.source}
+                className={s.ok ? "text-warm-gray" : "text-red-600"}
+              >
+                <span className="font-medium">{s.source}</span>
+                {s.ok
+                  ? ` · 추출 ${s.itemsExtracted} · 새 ${s.newDrafts}`
+                  : ` · 실패 (${s.error ?? "unknown"})`}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {toast ? (
+          <div className="border-t border-border pt-3 text-xs text-ink">
+            {toast}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function formatRunWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const Y = d.getFullYear();
+  const M = String(d.getMonth() + 1).padStart(2, "0");
+  const D = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return `${Y}.${M}.${D} ${h}:${m}`;
 }
 
 function RecentActivityRow({ log }: { log: EditLog }) {
