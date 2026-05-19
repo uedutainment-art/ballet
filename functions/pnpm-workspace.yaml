@@ -1,0 +1,7 @@
+# Marks `functions/` as its own pnpm workspace root, isolating it from the
+# Next.js app's pnpm workspace at the project root. Firebase Functions are
+# deployed as a standalone npm package, so this separation matches reality.
+
+allowBuilds:
+  '@firebase/util': true
+  protobufjs: true
