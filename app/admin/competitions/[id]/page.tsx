@@ -125,6 +125,10 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Fields just updated by a re-extract; rendered with a halo for ~1.5s.
+  const [recentlyUpdated, setRecentlyUpdated] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   const methods = useForm<CompetitionFormValues>({
     resolver: zodResolver(competitionFormSchema),
@@ -286,6 +290,30 @@ export default function EditorPage() {
     [runTransition],
   );
 
+  // ---------- Re-extract callback (from SourcePane) ----------
+
+  const onReExtracted = useCallback(
+    async (res: { fieldsUpdated: string[]; confidence: number }) => {
+      if (!competition) return;
+      // The Cloud Function already wrote to Firestore. Refetch + reset form.
+      const fresh = await getCompetitionById(competition.id);
+      if (fresh) {
+        setCompetition(fresh);
+        const values = competitionToForm(fresh);
+        methods.reset(values);
+        setLastSavedValues(values);
+      }
+      if (res.fieldsUpdated.length > 0) {
+        setRecentlyUpdated(new Set(res.fieldsUpdated));
+        setTimeout(() => setRecentlyUpdated(new Set()), 1800);
+        showToast(
+          `${res.fieldsUpdated.length}개 필드 갱신됨 · 신뢰도 ${Math.round(res.confidence * 100)}%`,
+        );
+      }
+    },
+    [competition, methods, showToast],
+  );
+
   // Move DRAFT → IN_REVIEW automatically on first edit.
   useEffect(() => {
     if (!competition || competition.status !== "DRAFT" || !dirty || !user?.uid)
@@ -349,11 +377,15 @@ export default function EditorPage() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
-          <SourcePane competition={competition} />
+          <SourcePane
+            competition={competition}
+            onReExtracted={onReExtracted}
+          />
           <FieldsPane
             aiConfidence={competition.aiConfidence}
             aiFieldNotes={competition.aiFieldNotes}
             autosave={autosaveStatus}
+            recentlyUpdated={recentlyUpdated}
           />
         </div>
 

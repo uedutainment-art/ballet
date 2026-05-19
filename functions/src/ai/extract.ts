@@ -106,27 +106,42 @@ export type ExtractionOutcome =
   | { ok: true; data: ExtractionResult; rawText: string }
   | { ok: false; rawText: string; error: string };
 
-export async function extractCompetitionFromImage(
-  imageUrl: string,
-  apiKey: string,
-  supplementText?: string | null,
-): Promise<ExtractionOutcome> {
-  const openai = new OpenAI({apiKey});
+export type ExtractionInput = {
+  imageDataUrl?: string;
+  supplementText?: string | null;
+};
 
+// Unified extractor. Accepts an image data URL, supplementary text, or both.
+// At least one is required; if neither is provided we return an error.
+
+export async function extractCompetition(
+  input: ExtractionInput,
+  apiKey: string,
+): Promise<ExtractionOutcome> {
+  if (!input.imageDataUrl && !(input.supplementText?.trim())) {
+    return {
+      ok: false,
+      rawText: "",
+      error: "No input — pass imageDataUrl, supplementText, or both",
+    };
+  }
+
+  const openai = new OpenAI({apiKey});
   const content: Array<
     | {type: "text"; text: string}
     | {type: "image_url"; image_url: {url: string; detail: "high"}}
-  > = [
-    {type: "text", text: COMPETITION_EXTRACTION_PROMPT},
-    {type: "image_url", image_url: {url: imageUrl, detail: "high"}},
-  ];
-  if (supplementText && supplementText.trim().length > 0) {
+  > = [{type: "text", text: COMPETITION_EXTRACTION_PROMPT}];
+
+  if (input.imageDataUrl) {
+    content.push({
+      type: "image_url",
+      image_url: {url: input.imageDataUrl, detail: "high"},
+    });
+  }
+  if (input.supplementText && input.supplementText.trim().length > 0) {
     content.push({
       type: "text",
-      text:
-        "\n\nADDITIONAL REFERENCE (text extracted from the official site URL " +
-        "the submitter provided — same event as the poster image above):\n\n" +
-        supplementText,
+      text: "\n\nSOURCE TEXT:\n\n" + input.supplementText,
     });
   }
 
@@ -167,4 +182,16 @@ export async function extractCompetitionFromImage(
     confidence: normalized.aiConfidence,
   });
   return {ok: true, data: normalized, rawText};
+}
+
+// Backward-compat wrapper for extractFromPoster.ts.
+export async function extractCompetitionFromImage(
+  imageUrl: string,
+  apiKey: string,
+  supplementText?: string | null,
+): Promise<ExtractionOutcome> {
+  return extractCompetition(
+    {imageDataUrl: imageUrl, supplementText: supplementText ?? undefined},
+    apiKey,
+  );
 }

@@ -6,6 +6,7 @@ import {getApps, initializeApp} from "firebase-admin/app";
 import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {getStorage} from "firebase-admin/storage";
 import {extractCompetitionFromImage} from "../ai/extract";
+import {fetchPageText} from "../ai/fetchPageText";
 
 if (getApps().length === 0) {
   initializeApp();
@@ -20,65 +21,6 @@ function parseDateMaybe(yyyymmdd: string | null): Timestamp | null {
   if (!m) return null;
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return Timestamp.fromDate(d);
-}
-
-// Best-effort fetch of the submitter-provided reference URL. Returns up to
-// ~12k chars of cleaned page text, or null if the URL is missing / fetch
-// fails / response is too large. Never throws — degrades to image-only.
-const SUPPLEMENT_MAX_CHARS = 12000;
-const FETCH_TIMEOUT_MS = 8000;
-
-async function fetchPageText(rawUrl?: string): Promise<string | null> {
-  if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) return null;
-  try {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
-    const resp = await fetch(rawUrl, {
-      signal: ctl.signal,
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; KBalletBot/1.0; +https://ballet-kappa.vercel.app)",
-        "accept": "text/html,application/xhtml+xml",
-      },
-      redirect: "follow",
-    }).finally(() => clearTimeout(timer));
-    if (!resp.ok) {
-      logger.info("[fetchPageText] non-OK response", {
-        url: rawUrl,
-        status: resp.status,
-      });
-      return null;
-    }
-    const contentType = resp.headers.get("content-type") || "";
-    if (!/text\/html|application\/xhtml/i.test(contentType)) {
-      logger.info("[fetchPageText] non-HTML content-type, skipping", {
-        url: rawUrl,
-        contentType,
-      });
-      return null;
-    }
-    const html = await resp.text();
-    const cleaned = html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, "\"")
-      .replace(/&#39;/g, "'")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (cleaned.length === 0) return null;
-    return cleaned.slice(0, SUPPLEMENT_MAX_CHARS);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.info("[fetchPageText] fetch failed", {url: rawUrl, error: msg});
-    return null;
-  }
 }
 
 // Cloud Function: fires on any Storage object finalize. We only process
