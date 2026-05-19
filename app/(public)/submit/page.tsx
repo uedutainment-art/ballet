@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Upload, X } from "lucide-react";
 import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { storage } from "@/lib/firebase/client";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/cn";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT_REGEX = /^(image\/.+|application\/pdf)$/;
@@ -61,10 +63,13 @@ export default function SubmitPage() {
 function SubmitForm() {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [phase, setPhase] = useState<
     "idle" | "uploading" | "done" | "error"
   >("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
     register,
@@ -73,9 +78,8 @@ function SubmitForm() {
     reset,
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function acceptFile(f: File | null) {
     setFileError(null);
-    const f = e.target.files?.[0] ?? null;
     if (!f) {
       setFile(null);
       return;
@@ -91,6 +95,32 @@ function SubmitForm() {
       return;
     }
     setFile(f);
+  }
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    acceptFile(e.target.files?.[0] ?? null);
+  }
+
+  function onDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setIsDragOver(false);
+    acceptFile(e.dataTransfer.files?.[0] ?? null);
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    if (!isDragOver) setIsDragOver(true);
+  }
+
+  function onDragLeave(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setIsDragOver(false);
+  }
+
+  function clearFile() {
+    setFile(null);
+    setFileError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function onSubmit(data: FormData) {
@@ -186,18 +216,67 @@ function SubmitForm() {
           />
         </Field>
 
-        <Field label="포스터 이미지" required hint="JPG / PNG / PDF · 10 MB 이하" error={fileError ?? undefined}>
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={onFileChange}
-            className="block w-full text-xs text-warm-gray file:mr-3 file:py-2 file:px-3 file:rounded-sm file:border file:border-border file:bg-cream-start file:text-ink file:text-xs file:cursor-pointer hover:file:bg-cream-start/80"
-          />
-          {file ? (
-            <div className="mt-2 text-[11px] text-warm-gray">
-              선택됨: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-            </div>
-          ) : null}
+        <Field
+          label="포스터 이미지"
+          required
+          hint="JPG / PNG / PDF · 10 MB 이하"
+          error={fileError ?? undefined}
+        >
+          <label
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            className={cn(
+              "block border-2 border-dashed rounded-md px-4 py-8 text-center cursor-pointer transition-colors",
+              isDragOver
+                ? "border-brand bg-brand/5"
+                : file
+                  ? "border-green-300 bg-green-50/40"
+                  : "border-border bg-cream-start/30 hover:border-warm-gray hover:bg-cream-start/50",
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={onFileChange}
+              className="hidden"
+            />
+            {file ? (
+              <div className="space-y-1">
+                <div className="text-xs text-ink truncate" title={file.name}>
+                  ✓ {file.name}
+                </div>
+                <div className="text-[11px] text-warm-gray">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    clearFile();
+                  }}
+                  className="inline-flex items-center gap-1 mt-2 text-[11px] text-warm-gray hover:text-ink"
+                >
+                  <X className="size-3" />
+                  다른 파일 선택
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 text-warm-gray">
+                <Upload className="size-6 mx-auto" />
+                <div className="text-xs">
+                  여기에 파일을 끌어다 놓거나{" "}
+                  <span className="text-brand underline underline-offset-2">
+                    클릭해서 선택
+                  </span>
+                </div>
+                <div className="text-[10px] text-warm-gray/70">
+                  JPG · PNG · PDF · 최대 10 MB
+                </div>
+              </div>
+            )}
+          </label>
         </Field>
 
         {errorMsg ? (
