@@ -1,17 +1,9 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
+// Root layout owns global concerns only: <html>, <body>, metadata, font links.
+// Page chrome (header / footer / nav) lives in route-group layouts such as
+// app/(public)/layout.tsx so admin / operator routes can have their own.
 
 export const metadata: Metadata = {
   title: "K BALLET & CO. — Info Hub",
@@ -38,11 +30,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
