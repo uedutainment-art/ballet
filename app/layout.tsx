@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
+import { Noto_Serif_KR } from "next/font/google";
 import "./globals.css";
 
-// Root layout owns global concerns only: <html>, <body>, metadata, font links.
+// Root layout owns global concerns only: <html>, <body>, metadata, fonts.
 // Page chrome (header / footer / nav) lives in route-group layouts such as
 // app/(public)/layout.tsx so admin / operator routes can have their own.
+
+const notoSerifKR = Noto_Serif_KR({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "K BALLET & CO. — Info Hub",
@@ -17,19 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin=""
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="ko" className={notoSerifKR.variable}>
       <body className="antialiased">{children}</body>
     </html>
   );

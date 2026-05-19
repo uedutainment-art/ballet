@@ -1,0 +1,22 @@
+import {
+  type FirestoreDataConverter,
+  type QueryDocumentSnapshot,
+  type SnapshotOptions,
+} from "firebase/firestore";
+import type { Competition } from "@/lib/types/competition";
+
+// Converter strips/restores the `id` field so it never lands in document data
+// but is always available on the returned object.
+
+export const competitionConverter: FirestoreDataConverter<Competition> = {
+  toFirestore(data) {
+    // `id` is stored as the document ID, never inside the body.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...rest } = data;
+    return rest;
+  },
+  fromFirestore(snap: QueryDocumentSnapshot, options?: SnapshotOptions) {
+    const data = snap.data(options);
+    return { ...(data as Omit<Competition, "id">), id: snap.id } as Competition;
+  },
+};

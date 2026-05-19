@@ -34,7 +34,7 @@ const config: Config = {
           "system-ui",
           "sans-serif",
         ],
-        serif: ["Noto Serif KR", "serif"],
+        serif: ["var(--font-serif)", "Noto Serif KR", "serif"],
       },
       borderRadius: {
         sm: "6px",
