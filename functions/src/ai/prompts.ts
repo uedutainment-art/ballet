@@ -45,6 +45,40 @@ When ADDITIONAL REFERENCE text is provided after the image, treat the image as p
 
 Output JSON only.`;
 
+export const VIDEO_EXTRACTION_PROMPT = `You are extracting metadata for a Korean ballet YouTube video, given the video URL plus any provided page text (typically the YouTube watch page).
+
+Return STRICT JSON only — no preamble, no markdown fences, no commentary.
+
+Schema:
+{
+  "title": string,         // required
+  "description": string | null,    // 2000 chars max
+  "youtubeUrl": string | null,     // canonical https://www.youtube.com/watch?v=… form
+  "series": "levels" | "admission" | "competition" | "interview" | "review" | "other",
+  "type": "short" | "long" | "live",  // short = <60s, long = >=60s recorded, live = streamed
+  "level": "L0" | "L0.5" | "L1" | "L2" | "L3" | "L4" | null,
+  "durationSeconds": number | null,
+  "host": string | null,
+  "aiConfidence": number,
+  "aiFieldNotes": object
+}
+
+Inference rules:
+- series:
+    levels       기본기 / 자세 / 레벨별 가이드 영상
+    admission    입시·예고·대학 모집 관련
+    competition  콩쿠르 준비·후기·곡 해설
+    interview    인터뷰·다큐
+    review       공연 리뷰
+    other        분류 모호
+- type: <60s → "short", live stream → "live", 그 외 → "long"
+- level: 영상이 명시적으로 레벨을 표기할 때만 채우고, 모호하면 null + 노트
+- durationSeconds: 페이지 텍스트에 명시된 "5:23" 형식을 초로 환산
+- title은 영상의 한국어 제목 그대로
+- description: YouTube 설명란을 그대로 가져오되 마케팅 문구·해시태그·링크는 제거
+
+Output JSON only.`;
+
 export const PERFORMANCE_EXTRACTION_PROMPT = `You are extracting structured data about a Korean ballet performance from an image (poster), PDF, URL page text, or pasted text.
 
 Return STRICT JSON only — no preamble, no markdown fences, no commentary.

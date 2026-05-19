@@ -15,6 +15,7 @@ import {
   admissionConverter,
   competitionConverter,
   performanceConverter,
+  videoConverter,
 } from "@/lib/firebase/converters";
 import type {
   Competition,
@@ -22,10 +23,16 @@ import type {
 } from "@/lib/types/competition";
 import type { Admission, SchoolType } from "@/lib/types/admission";
 import type { CompanyType, Performance } from "@/lib/types/performance";
+import type {
+  Video,
+  VideoLevel,
+  VideoSeries,
+} from "@/lib/types/video";
 
 const COL = "competitions";
 const ADMISSIONS_COL = "admissions";
 const PERFORMANCES_COL = "performances";
+const VIDEOS_COL = "videos";
 
 export type ListCompetitionsOptions = {
   limit?: number;
@@ -282,4 +289,72 @@ export async function listUpcomingPerformances(
     console.error("[queries] listUpcomingPerformances failed:", err);
     return [];
   }
+}
+
+// ---------- Videos (M9) ----------
+
+export type ListVideosOptions = {
+  limit?: number;
+  series?: VideoSeries;
+  level?: VideoLevel;
+  search?: string;
+};
+
+export async function listPublishedVideos(
+  opts: ListVideosOptions = {},
+): Promise<Video[]> {
+  try {
+    const q = query(
+      collection(db, VIDEOS_COL).withConverter(videoConverter),
+      where("status", "==", "PUBLISHED"),
+      fbLimit(opts.limit ?? 60),
+    );
+    const snap = await getDocs(q);
+    let docs = snap.docs.map((d) => d.data());
+
+    if (opts.series) docs = docs.filter((d) => d.series === opts.series);
+    if (opts.level) docs = docs.filter((d) => d.level === opts.level);
+    if (opts.search) {
+      const needle = opts.search.trim().toLowerCase();
+      docs = docs.filter((d) => d.title.toLowerCase().includes(needle));
+    }
+    docs.sort((a, b) => {
+      const ta = a.publishedAt?.toMillis() ?? a.aiCollectedAt?.toMillis() ?? 0;
+      const tb = b.publishedAt?.toMillis() ?? b.aiCollectedAt?.toMillis() ?? 0;
+      return tb - ta; // newest first
+    });
+    return docs;
+  } catch (err) {
+    console.error("[queries] listPublishedVideos failed:", err);
+    return [];
+  }
+}
+
+export async function getVideoById(id: string): Promise<Video | null> {
+  try {
+    const ref = doc(db, VIDEOS_COL, id).withConverter(videoConverter);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`[queries] getVideoById(${id}) failed:`, err);
+    return null;
+  }
+}
+
+export async function listLatestVideos(n: number): Promise<Video[]> {
+  return (await listPublishedVideos({ limit: Math.max(n, 12) })).slice(0, n);
+}
+
+export async function listVideosByLevel(
+  level: VideoLevel,
+  n = 30,
+): Promise<Video[]> {
+  return listPublishedVideos({ level, limit: n });
+}
+
+export async function listVideosBySeries(
+  series: VideoSeries,
+  n = 30,
+): Promise<Video[]> {
+  return listPublishedVideos({ series, limit: n });
 }

@@ -4,6 +4,7 @@ import {
   ADMISSION_EXTRACTION_PROMPT,
   COMPETITION_EXTRACTION_PROMPT,
   PERFORMANCE_EXTRACTION_PROMPT,
+  VIDEO_EXTRACTION_PROMPT,
 } from "./prompts";
 
 export type CompetitionCategory =
@@ -531,6 +532,189 @@ export async function extractPerformance(
   logger.info("[extract-performance] OK", {
     title: normalized.title,
     company: normalized.company,
+    confidence: normalized.aiConfidence,
+  });
+  return {ok: true, data: normalized, rawText};
+}
+
+// ---------- Video extraction (M9) ----------
+
+export type VideoSeriesType =
+  | "levels"
+  | "admission"
+  | "competition"
+  | "interview"
+  | "review"
+  | "other";
+
+export type VideoTypeKind = "short" | "long" | "live";
+
+export type VideoLevelKind = "L0" | "L0.5" | "L1" | "L2" | "L3" | "L4";
+
+export type VideoExtractionResult = {
+  title: string;
+  description: string | null;
+  youtubeUrl: string | null;
+  series: VideoSeriesType;
+  type: VideoTypeKind;
+  level: VideoLevelKind | null;
+  durationSeconds: number | null;
+  host: string | null;
+  aiConfidence: number;
+  aiFieldNotes: Record<string, string>;
+};
+
+export type VideoExtractionOutcome =
+  | { ok: true; data: VideoExtractionResult; rawText: string }
+  | { ok: false; rawText: string; error: string };
+
+const VALID_VIDEO_SERIES: VideoSeriesType[] = [
+  "levels",
+  "admission",
+  "competition",
+  "interview",
+  "review",
+  "other",
+];
+
+const VALID_VIDEO_TYPES: VideoTypeKind[] = ["short", "long", "live"];
+
+const VALID_VIDEO_LEVELS: VideoLevelKind[] = [
+  "L0",
+  "L0.5",
+  "L1",
+  "L2",
+  "L3",
+  "L4",
+];
+
+function asPositiveSeconds(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+    return Math.round(v);
+  }
+  if (typeof v === "string") {
+    // Handle "5:23" or "1:23:45" if the model returns them.
+    const colonParts = v.split(":").map((p) => Number(p.trim()));
+    if (colonParts.every((n) => Number.isFinite(n))) {
+      if (colonParts.length === 2) return colonParts[0] * 60 + colonParts[1];
+      if (colonParts.length === 3) {
+        return colonParts[0] * 3600 + colonParts[1] * 60 + colonParts[2];
+      }
+    }
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 0) return Math.round(n);
+  }
+  return null;
+}
+
+function normalizeVideo(raw: unknown): VideoExtractionResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const title = asString(r.title);
+  if (!title) return null;
+
+  const rawSeries = r.series;
+  const series: VideoSeriesType =
+    typeof rawSeries === "string" &&
+    VALID_VIDEO_SERIES.includes(rawSeries as VideoSeriesType) ?
+      (rawSeries as VideoSeriesType) :
+      "other";
+
+  const rawType = r.type;
+  const type: VideoTypeKind =
+    typeof rawType === "string" &&
+    VALID_VIDEO_TYPES.includes(rawType as VideoTypeKind) ?
+      (rawType as VideoTypeKind) :
+      "long";
+
+  const rawLevel = r.level;
+  const level: VideoLevelKind | null =
+    typeof rawLevel === "string" &&
+    VALID_VIDEO_LEVELS.includes(rawLevel as VideoLevelKind) ?
+      (rawLevel as VideoLevelKind) :
+      null;
+
+  return {
+    title,
+    description: asString(r.description),
+    youtubeUrl: asString(r.youtubeUrl),
+    series,
+    type,
+    level,
+    durationSeconds: asPositiveSeconds(r.durationSeconds),
+    host: asString(r.host),
+    aiConfidence: asConfidence(r.aiConfidence),
+    aiFieldNotes: asNoteMap(r.aiFieldNotes),
+  };
+}
+
+export async function extractVideo(
+  input: ExtractionInput,
+  apiKey: string,
+): Promise<VideoExtractionOutcome> {
+  if (!input.imageDataUrl && !(input.supplementText?.trim())) {
+    return {
+      ok: false,
+      rawText: "",
+      error: "No input — pass imageDataUrl, supplementText, or both",
+    };
+  }
+
+  const openai = new OpenAI({apiKey});
+  const content: Array<
+    | {type: "text"; text: string}
+    | {type: "image_url"; image_url: {url: string; detail: "high"}}
+  > = [{type: "text", text: VIDEO_EXTRACTION_PROMPT}];
+
+  if (input.imageDataUrl) {
+    content.push({
+      type: "image_url",
+      image_url: {url: input.imageDataUrl, detail: "high"},
+    });
+  }
+  if (input.supplementText && input.supplementText.trim().length > 0) {
+    content.push({
+      type: "text",
+      text: "\n\nSOURCE TEXT:\n\n" + input.supplementText,
+    });
+  }
+
+  let resp;
+  try {
+    resp = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{role: "user", content}],
+      response_format: {type: "json_object"},
+      max_tokens: 1500,
+      temperature: 0.1,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[extract-video] OpenAI call failed", {error: msg});
+    return {ok: false, rawText: "", error: msg};
+  }
+
+  const rawText = resp.choices[0]?.message?.content ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {ok: false, rawText, error: "JSON parse failed"};
+  }
+
+  const normalized = normalizeVideo(parsed);
+  if (!normalized) {
+    return {
+      ok: false,
+      rawText,
+      error: "Missing required field (title)",
+    };
+  }
+
+  logger.info("[extract-video] OK", {
+    title: normalized.title,
+    series: normalized.series,
     confidence: normalized.aiConfidence,
   });
   return {ok: true, data: normalized, rawText};

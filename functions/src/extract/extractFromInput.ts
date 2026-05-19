@@ -7,9 +7,11 @@ import {
   extractAdmission,
   extractCompetition,
   extractPerformance,
+  extractVideo,
   type AdmissionExtractionResult,
   type ExtractionResult,
   type PerformanceExtractionResult,
+  type VideoExtractionResult,
 } from "../ai/extract";
 import {fetchPageText} from "../ai/fetchPageText";
 
@@ -21,7 +23,7 @@ const OPENAI_KEY = defineSecret("OPENAI_API_KEY");
 
 type InputMode = "image" | "pdf" | "url" | "text";
 type ApplyMode = "overwrite" | "fill_empty" | "higher_confidence";
-type Domain = "competition" | "admission" | "performance";
+type Domain = "competition" | "admission" | "performance" | "video";
 
 type CallRequest = {
   docId: string;
@@ -98,6 +100,16 @@ const EXTRACTABLE_FIELDS_BY_DOMAIN: Record<Domain, readonly string[]> = {
     "posterUrl",
     "officialUrl",
   ],
+  video: [
+    "title",
+    "description",
+    "youtubeUrl",
+    "series",
+    "type",
+    "level",
+    "durationSeconds",
+    "host",
+  ],
 };
 
 const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
@@ -115,12 +127,14 @@ const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
     "announcementAt",
   ]),
   performance: new Set(["dateStart", "dateEnd"]),
+  video: new Set<string>(), // no date fields
 };
 
 const COLLECTION_BY_DOMAIN: Record<Domain, string> = {
   competition: "competitions",
   admission: "admissions",
   performance: "performances",
+  video: "videos",
 };
 
 function isEmptyValue(v: unknown): boolean {
@@ -156,7 +170,8 @@ function mergeWithMode(
   extracted:
     | ExtractionResult
     | AdmissionExtractionResult
-    | PerformanceExtractionResult,
+    | PerformanceExtractionResult
+    | VideoExtractionResult,
   applyMode: ApplyMode,
   domain: Domain,
 ): {patch: Record<string, unknown>; changedFields: string[]} {
@@ -227,6 +242,14 @@ function buildContextLine(
       "fields, preferring concrete facts over assumptions.\n\n"
     );
   }
+  if (domain === "video") {
+    return (
+      `Existing video record being updated: "${existing.title ?? ""}" — ` +
+      `youtubeUrl "${existing.youtubeUrl ?? ""}". ` +
+      "The new source below is the YouTube watch page text for the SAME " +
+      "video; extract metadata only, do not invent.\n\n"
+    );
+  }
   return (
     `Existing record being updated: "${existing.name ?? ""}" — host "${existing.host ?? ""}". ` +
     "The new source below describes the SAME event; extract the same fields, " +
@@ -244,7 +267,7 @@ function docTitleFor(
     const dept = data.department ?? "";
     return school || dept ? `${school} ${dept}`.trim() : fallback;
   }
-  if (domain === "performance") {
+  if (domain === "performance" || domain === "video") {
     return (data.title as string) || fallback;
   }
   return (data.name as string) || fallback;
@@ -280,7 +303,8 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
     if (
       domain !== "competition" &&
       domain !== "admission" &&
-      domain !== "performance"
+      domain !== "performance" &&
+      domain !== "video"
     ) {
       throw new HttpsError("invalid-argument", `Unknown domain: ${domain}`);
     }
@@ -309,12 +333,19 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
     const contextLine = buildContextLine(existing, domain);
 
     // ---- Run extraction (domain decides which model + schema) ----
-    const runExtractor = (input: {imageDataUrl?: string; supplementText?: string}) =>
-      domain === "admission" ?
-        extractAdmission(input, OPENAI_KEY.value()) :
-        domain === "performance" ?
-          extractPerformance(input, OPENAI_KEY.value()) :
-          extractCompetition(input, OPENAI_KEY.value());
+    const runExtractor = (input: {imageDataUrl?: string; supplementText?: string}) => {
+      switch (domain) {
+      case "admission":
+        return extractAdmission(input, OPENAI_KEY.value());
+      case "performance":
+        return extractPerformance(input, OPENAI_KEY.value());
+      case "video":
+        return extractVideo(input, OPENAI_KEY.value());
+      case "competition":
+      default:
+        return extractCompetition(input, OPENAI_KEY.value());
+      }
+    };
 
     let extractionResult;
     switch (mode) {

@@ -6,6 +6,7 @@ import {
 import type { Competition } from "@/lib/types/competition";
 import type { Admission } from "@/lib/types/admission";
 import type { Performance } from "@/lib/types/performance";
+import type { Video } from "@/lib/types/video";
 
 // Converter strips/restores the `id` field so it never lands in document data
 // but is always available on the returned object.
@@ -47,5 +48,17 @@ export const performanceConverter: FirestoreDataConverter<Performance> = {
       ...(data as Omit<Performance, "id">),
       id: snap.id,
     } as Performance;
+  },
+};
+
+export const videoConverter: FirestoreDataConverter<Video> = {
+  toFirestore(data) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...rest } = data;
+    return rest;
+  },
+  fromFirestore(snap: QueryDocumentSnapshot, options?: SnapshotOptions) {
+    const data = snap.data(options);
+    return { ...(data as Omit<Video, "id">), id: snap.id } as Video;
   },
 };

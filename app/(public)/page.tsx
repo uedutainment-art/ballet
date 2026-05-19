@@ -3,21 +3,24 @@ import { Search } from "lucide-react";
 import { CompetitionCard } from "@/components/public/CompetitionCard";
 import { AdmissionCard } from "@/components/public/AdmissionCard";
 import { PerformanceCard } from "@/components/public/PerformanceCard";
+import { VideoCard } from "@/components/public/VideoCard";
 import {
+  listLatestVideos,
   listUpcomingPerformances,
   listUrgentAdmissions,
   listUrgentCompetitions,
 } from "@/lib/firebase/queries";
 
-// Revalidate every 5 minutes. Editor publishes new competitions and the page
+// Revalidate every 5 minutes. Editor publishes new content and the page
 // catches up on the next request after this window without a full rebuild.
 export const revalidate = 300;
 
 export default async function Home() {
-  const [urgent, admissions, performances] = await Promise.all([
+  const [urgent, admissions, performances, videos] = await Promise.all([
     listUrgentCompetitions(4),
     listUrgentAdmissions(3, 90),
     listUpcomingPerformances(3),
+    listLatestVideos(3),
   ]);
 
   return (
@@ -186,32 +189,52 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="px-6 pb-24">
+      <section className="px-6 py-12 pb-24">
         <div className="mx-auto max-w-7xl">
-          <PlaceholderTile
-            title="강의 영상"
-            tagline="베리에이션 · 솔로 영상 큐레이션이 곧 열려요"
-          />
+          <div className="flex items-baseline justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-serif font-medium text-ink">
+                최신 영상
+                <span className="ml-2 text-sm text-warm-gray font-sans font-normal">
+                  {videos.length}편
+                </span>
+              </h2>
+              <p className="mt-1 text-xs text-warm-gray">
+                K BALLET TV — 레벨 가이드, 입시, 콩쿠르, 인터뷰
+              </p>
+            </div>
+            <Link
+              href="/videos"
+              className="text-sm text-brand hover:underline"
+            >
+              전체 보기 →
+            </Link>
+          </div>
+
+          {videos.length === 0 ? (
+            <div className="border border-dashed border-border rounded-md bg-white py-16 text-center">
+              <div className="text-sm text-warm-gray">
+                아직 공개된 영상이 없어요
+              </div>
+              <Link
+                href="https://www.youtube.com/@kballetco"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-block text-xs text-brand hover:underline"
+              >
+                K BALLET TV 채널 보기 →
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {videos.map((v) => (
+                <VideoCard key={v.id} video={v} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </>
   );
 }
 
-function PlaceholderTile({
-  title,
-  tagline,
-}: {
-  title: string;
-  tagline: string;
-}) {
-  return (
-    <div className="border border-dashed border-border rounded-md bg-cream-start/40 p-8">
-      <div className="text-sm font-serif font-medium text-ink">{title}</div>
-      <p className="mt-2 text-xs text-warm-gray">{tagline}</p>
-      <div className="mt-4 inline-block text-[11px] tracking-wider text-warm-gray/70 uppercase">
-        coming soon
-      </div>
-    </div>
-  );
-}

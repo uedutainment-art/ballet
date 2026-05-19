@@ -33,6 +33,9 @@ export type SourcePaneTarget = {
   domain: ReExtractDomain;
   posterUrl?: string;
   officialUrl?: string;
+  // Optional YouTube ID — when present the left-side reference shows the
+  // embedded player instead of a poster thumbnail. Used by /admin/videos.
+  youtubeId?: string;
   accentColorFrom: string; // for fallback gradient
   accentColorTo: string;
   accentLabel: string;
@@ -356,13 +359,39 @@ export function SourcePane({target, onReExtracted}: Props) {
 }
 
 function OriginalSource({target}: {target: SourcePaneTarget}) {
+  // Video domain: render the YouTube embed inline so the editor can preview
+  // the actual video they're cataloguing without leaving the page.
+  if (target.domain === "video" && target.youtubeId) {
+    return (
+      <div className="space-y-2 pb-3 border-b border-border">
+        <div className="text-xs text-warm-gray">📺 현재 영상</div>
+        <div className="relative aspect-video bg-black rounded-sm overflow-hidden">
+          <iframe
+            src={`https://www.youtube.com/embed/${target.youtubeId}?rel=0&modestbranding=1`}
+            title="현재 영상"
+            className="absolute inset-0 w-full h-full"
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+        <div className="text-[10px] text-warm-gray text-right">
+          다른 자료로 재분석 ↓
+        </div>
+      </div>
+    );
+  }
+
   const hasPoster = !!target.posterUrl;
   const sourceLabel =
     target.domain === "competition" ? "📷 현재 원본 자료" : "📌 현재 기준 자료";
   const sourceDetail =
     target.domain === "competition" ?
       hasPoster ? "포스터 이미지 있음" : "포스터 없음" :
-      "포스터 없음 (입시)";
+      target.domain === "video" ?
+        "YouTube ID 없음" :
+        "포스터 없음";
 
   return (
     <div className="flex items-center gap-3 pb-2 border-b border-border">

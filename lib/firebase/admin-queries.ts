@@ -16,15 +16,18 @@ import {
   admissionConverter,
   competitionConverter,
   performanceConverter,
+  videoConverter,
 } from "@/lib/firebase/converters";
 import type { Competition } from "@/lib/types/competition";
 import type { Admission } from "@/lib/types/admission";
 import type { Performance } from "@/lib/types/performance";
+import type { Video } from "@/lib/types/video";
 import type { ContentStatus } from "@/lib/types/status";
 
 const COL = "competitions";
 const ADMISSIONS_COL = "admissions";
 const PERFORMANCES_COL = "performances";
+const VIDEOS_COL = "videos";
 
 const ALL_STATUSES: ContentStatus[] = [
   "DRAFT",
@@ -210,6 +213,54 @@ export async function listPerformancesByStatus(
   } catch (err) {
     console.error(
       `[admin-queries] listPerformancesByStatus(${status}) failed:`,
+      err,
+    );
+    return [];
+  }
+}
+
+// ---------- Videos (M9) ----------
+
+export async function countByStatusVideos(): Promise<Record<ContentStatus, number>> {
+  try {
+    const pairs = await Promise.all(
+      ALL_STATUSES.map(async (s) => {
+        const q = query(
+          collection(db, VIDEOS_COL),
+          where("status", "==", s),
+        );
+        const snap = await getCountFromServer(q);
+        return [s, snap.data().count] as const;
+      }),
+    );
+    return Object.fromEntries(pairs) as Record<ContentStatus, number>;
+  } catch (err) {
+    console.error("[admin-queries] countByStatusVideos failed:", err);
+    return { ...EMPTY_COUNTS };
+  }
+}
+
+export async function listVideosByStatus(
+  status: ContentStatus,
+  limit = 30,
+): Promise<Video[]> {
+  try {
+    const q = query(
+      collection(db, VIDEOS_COL).withConverter(videoConverter),
+      where("status", "==", status),
+      fbLimit(limit),
+    );
+    const snap = await getDocs(q);
+    const docs = snap.docs.map((d) => d.data());
+    docs.sort((a, b) => {
+      const ta = a.aiCollectedAt?.toMillis() ?? 0;
+      const tb = b.aiCollectedAt?.toMillis() ?? 0;
+      return tb - ta;
+    });
+    return docs;
+  } catch (err) {
+    console.error(
+      `[admin-queries] listVideosByStatus(${status}) failed:`,
       err,
     );
     return [];

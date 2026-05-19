@@ -10,7 +10,7 @@ const navItems: NavItem[] = [
   { label: "대회정보", href: "/competitions", active: true },
   { label: "입시정보", href: "/admissions", active: true },
   { label: "공연정보", href: "/performances", active: true },
-  { label: "영상", href: "/videos" },
+  { label: "영상", href: "/videos", active: true },
   { label: "커뮤니티", href: "/community" },
 ];
 

@@ -39,8 +39,7 @@ const items: NavItem[] = [
   {
     label: "영상",
     href: "/admin/videos",
-    enabled: false,
-    disabledTag: "M7+",
+    enabled: true,
     visible: () => true,
   },
   {
