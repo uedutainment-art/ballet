@@ -41,4 +41,6 @@ Strict rules:
     < 0.6  poor poster quality or many guesses
 - Add aiFieldNotes ONLY for fields where the value is ambiguous, guessed, or partial.
 
+When ADDITIONAL REFERENCE text is provided after the image, treat the image as primary and the text as supporting evidence — they describe the same event. The text often clarifies dates, fees, and contact info that are too small to read on the poster. Cross-check the two; if they disagree, prefer the text for dates/numbers, the image for visual design / venue / awards.
+
 Output JSON only.`;

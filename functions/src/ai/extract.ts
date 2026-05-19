@@ -109,25 +109,32 @@ export type ExtractionOutcome =
 export async function extractCompetitionFromImage(
   imageUrl: string,
   apiKey: string,
+  supplementText?: string | null,
 ): Promise<ExtractionOutcome> {
   const openai = new OpenAI({apiKey});
+
+  const content: Array<
+    | {type: "text"; text: string}
+    | {type: "image_url"; image_url: {url: string; detail: "high"}}
+  > = [
+    {type: "text", text: COMPETITION_EXTRACTION_PROMPT},
+    {type: "image_url", image_url: {url: imageUrl, detail: "high"}},
+  ];
+  if (supplementText && supplementText.trim().length > 0) {
+    content.push({
+      type: "text",
+      text:
+        "\n\nADDITIONAL REFERENCE (text extracted from the official site URL " +
+        "the submitter provided — same event as the poster image above):\n\n" +
+        supplementText,
+    });
+  }
 
   let resp;
   try {
     resp = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {type: "text", text: COMPETITION_EXTRACTION_PROMPT},
-            {
-              type: "image_url",
-              image_url: {url: imageUrl, detail: "high"},
-            },
-          ],
-        },
-      ],
+      messages: [{role: "user", content}],
       response_format: {type: "json_object"},
       max_tokens: 1500,
       temperature: 0.1,

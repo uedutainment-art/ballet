@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import {onObjectFinalized} from "firebase-functions/v2/storage";
 import {defineSecret} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
@@ -19,6 +20,65 @@ function parseDateMaybe(yyyymmdd: string | null): Timestamp | null {
   if (!m) return null;
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return Timestamp.fromDate(d);
+}
+
+// Best-effort fetch of the submitter-provided reference URL. Returns up to
+// ~12k chars of cleaned page text, or null if the URL is missing / fetch
+// fails / response is too large. Never throws — degrades to image-only.
+const SUPPLEMENT_MAX_CHARS = 12000;
+const FETCH_TIMEOUT_MS = 8000;
+
+async function fetchPageText(rawUrl?: string): Promise<string | null> {
+  if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) return null;
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    const resp = await fetch(rawUrl, {
+      signal: ctl.signal,
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (compatible; KBalletBot/1.0; +https://ballet-kappa.vercel.app)",
+        "accept": "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+    }).finally(() => clearTimeout(timer));
+    if (!resp.ok) {
+      logger.info("[fetchPageText] non-OK response", {
+        url: rawUrl,
+        status: resp.status,
+      });
+      return null;
+    }
+    const contentType = resp.headers.get("content-type") || "";
+    if (!/text\/html|application\/xhtml/i.test(contentType)) {
+      logger.info("[fetchPageText] non-HTML content-type, skipping", {
+        url: rawUrl,
+        contentType,
+      });
+      return null;
+    }
+    const html = await resp.text();
+    const cleaned = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, "\"")
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned.length === 0) return null;
+    return cleaned.slice(0, SUPPLEMENT_MAX_CHARS);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.info("[fetchPageText] fetch failed", {url: rawUrl, error: msg});
+    return null;
+  }
 }
 
 // Cloud Function: fires on any Storage object finalize. We only process
@@ -68,9 +128,18 @@ export const extractFromPoster = onObjectFinalized(
       mime: imageMime,
     });
 
+    const linkText = await fetchPageText(customMetadata.link);
+    if (linkText) {
+      logger.info("[extract] supplemental link text fetched", {
+        link: customMetadata.link,
+        chars: linkText.length,
+      });
+    }
+
     const result = await extractCompetitionFromImage(
       dataUrl,
       OPENAI_KEY.value(),
+      linkText,
     );
 
     const db = getFirestore();
@@ -92,9 +161,21 @@ export const extractFromPoster = onObjectFinalized(
     }
 
     const data = result.data;
-    const posterUrl = `https://storage.googleapis.com/${bucketName}/${encodeURI(
-      filePath,
-    )}`;
+
+    // Mint a Firebase download token so the poster URL bypasses Storage rules
+    // (which deny public read on submissions/*). The token is an unguessable
+    // UUID and lives on the object's metadata — only consumers with the URL
+    // can read.
+    const token = randomUUID();
+    await file.setMetadata({
+      metadata: {
+        ...customMetadata,
+        firebaseStorageDownloadTokens: token,
+      },
+    });
+    const posterUrl =
+      `https://firebasestorage.googleapis.com/v0/b/${bucketName}` +
+      `/o/${encodeURIComponent(filePath)}?alt=media&token=${token}`;
 
     const doc: Record<string, unknown> = {
       status: "DRAFT",
