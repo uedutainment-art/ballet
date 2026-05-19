@@ -3,6 +3,7 @@ import * as logger from "firebase-functions/logger";
 import {
   ADMISSION_EXTRACTION_PROMPT,
   COMPETITION_EXTRACTION_PROMPT,
+  PERFORMANCE_EXTRACTION_PROMPT,
 } from "./prompts";
 
 export type CompetitionCategory =
@@ -365,6 +366,171 @@ export async function extractAdmission(
   logger.info("[extract-admission] OK", {
     school: normalized.schoolName,
     year: normalized.year,
+    confidence: normalized.aiConfidence,
+  });
+  return {ok: true, data: normalized, rawText};
+}
+
+// ---------- Performance extraction (M8) ----------
+
+export type PerformanceCompanyType =
+  | "national"
+  | "private"
+  | "university"
+  | "foreign"
+  | "other";
+
+export type PerformanceExtractionResult = {
+  title: string;
+  company: string;
+  companyType: PerformanceCompanyType;
+  venue: string;
+  dateStart: string | null;
+  dateEnd: string | null;
+  showtimes: string[];
+  ticketPriceMin: number | null;
+  ticketPriceMax: number | null;
+  ticketUrl: string | null;
+  description: string | null;
+  choreographer: string | null;
+  composer: string | null;
+  runtime: number | null;
+  ageLimit: string | null;
+  posterUrl: string | null;
+  officialUrl: string | null;
+  aiConfidence: number;
+  aiFieldNotes: Record<string, string>;
+};
+
+export type PerformanceExtractionOutcome =
+  | { ok: true; data: PerformanceExtractionResult; rawText: string }
+  | { ok: false; rawText: string; error: string };
+
+const VALID_COMPANY_TYPES: PerformanceCompanyType[] = [
+  "national",
+  "private",
+  "university",
+  "foreign",
+  "other",
+];
+
+function asPositiveInt(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+    return Math.round(v);
+  }
+  if (typeof v === "string") {
+    const n = Number(v.replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(n) && n >= 0) return Math.round(n);
+  }
+  return null;
+}
+
+function normalizePerformance(
+  raw: unknown,
+): PerformanceExtractionResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const title = asString(r.title);
+  const company = asString(r.company);
+  if (!title || !company) return null;
+
+  const rawType = r.companyType;
+  const companyType: PerformanceCompanyType =
+    typeof rawType === "string" &&
+    VALID_COMPANY_TYPES.includes(rawType as PerformanceCompanyType) ?
+      (rawType as PerformanceCompanyType) :
+      "other";
+
+  return {
+    title,
+    company,
+    companyType,
+    venue: asString(r.venue) ?? "",
+    dateStart: asString(r.dateStart),
+    dateEnd: asString(r.dateEnd),
+    showtimes: asStringArray(r.showtimes),
+    ticketPriceMin: asPositiveInt(r.ticketPriceMin),
+    ticketPriceMax: asPositiveInt(r.ticketPriceMax),
+    ticketUrl: asString(r.ticketUrl),
+    description: asString(r.description),
+    choreographer: asString(r.choreographer),
+    composer: asString(r.composer),
+    runtime: asPositiveInt(r.runtime),
+    ageLimit: asString(r.ageLimit),
+    posterUrl: asString(r.posterUrl),
+    officialUrl: asString(r.officialUrl),
+    aiConfidence: asConfidence(r.aiConfidence),
+    aiFieldNotes: asNoteMap(r.aiFieldNotes),
+  };
+}
+
+export async function extractPerformance(
+  input: ExtractionInput,
+  apiKey: string,
+): Promise<PerformanceExtractionOutcome> {
+  if (!input.imageDataUrl && !(input.supplementText?.trim())) {
+    return {
+      ok: false,
+      rawText: "",
+      error: "No input — pass imageDataUrl, supplementText, or both",
+    };
+  }
+
+  const openai = new OpenAI({apiKey});
+  const content: Array<
+    | {type: "text"; text: string}
+    | {type: "image_url"; image_url: {url: string; detail: "high"}}
+  > = [{type: "text", text: PERFORMANCE_EXTRACTION_PROMPT}];
+
+  if (input.imageDataUrl) {
+    content.push({
+      type: "image_url",
+      image_url: {url: input.imageDataUrl, detail: "high"},
+    });
+  }
+  if (input.supplementText && input.supplementText.trim().length > 0) {
+    content.push({
+      type: "text",
+      text: "\n\nSOURCE TEXT:\n\n" + input.supplementText,
+    });
+  }
+
+  let resp;
+  try {
+    resp = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{role: "user", content}],
+      response_format: {type: "json_object"},
+      max_tokens: 1500,
+      temperature: 0.1,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[extract-performance] OpenAI call failed", {error: msg});
+    return {ok: false, rawText: "", error: msg};
+  }
+
+  const rawText = resp.choices[0]?.message?.content ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {ok: false, rawText, error: "JSON parse failed"};
+  }
+
+  const normalized = normalizePerformance(parsed);
+  if (!normalized) {
+    return {
+      ok: false,
+      rawText,
+      error: "Missing required fields (title, company)",
+    };
+  }
+
+  logger.info("[extract-performance] OK", {
+    title: normalized.title,
+    company: normalized.company,
     confidence: normalized.aiConfidence,
   });
   return {ok: true, data: normalized, rawText};

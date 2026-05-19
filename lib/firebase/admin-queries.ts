@@ -15,13 +15,16 @@ import { db } from "@/lib/firebase/client";
 import {
   admissionConverter,
   competitionConverter,
+  performanceConverter,
 } from "@/lib/firebase/converters";
 import type { Competition } from "@/lib/types/competition";
 import type { Admission } from "@/lib/types/admission";
+import type { Performance } from "@/lib/types/performance";
 import type { ContentStatus } from "@/lib/types/status";
 
 const COL = "competitions";
 const ADMISSIONS_COL = "admissions";
+const PERFORMANCES_COL = "performances";
 
 const ALL_STATUSES: ContentStatus[] = [
   "DRAFT",
@@ -159,6 +162,54 @@ export async function listAdmissionsByStatus(
   } catch (err) {
     console.error(
       `[admin-queries] listAdmissionsByStatus(${status}) failed:`,
+      err,
+    );
+    return [];
+  }
+}
+
+// ---------- Performances (M8) ----------
+
+export async function countByStatusPerformances(): Promise<Record<ContentStatus, number>> {
+  try {
+    const pairs = await Promise.all(
+      ALL_STATUSES.map(async (s) => {
+        const q = query(
+          collection(db, PERFORMANCES_COL),
+          where("status", "==", s),
+        );
+        const snap = await getCountFromServer(q);
+        return [s, snap.data().count] as const;
+      }),
+    );
+    return Object.fromEntries(pairs) as Record<ContentStatus, number>;
+  } catch (err) {
+    console.error("[admin-queries] countByStatusPerformances failed:", err);
+    return { ...EMPTY_COUNTS };
+  }
+}
+
+export async function listPerformancesByStatus(
+  status: ContentStatus,
+  limit = 30,
+): Promise<Performance[]> {
+  try {
+    const q = query(
+      collection(db, PERFORMANCES_COL).withConverter(performanceConverter),
+      where("status", "==", status),
+      fbLimit(limit),
+    );
+    const snap = await getDocs(q);
+    const docs = snap.docs.map((d) => d.data());
+    docs.sort((a, b) => {
+      const ta = a.aiCollectedAt?.toMillis() ?? 0;
+      const tb = b.aiCollectedAt?.toMillis() ?? 0;
+      return tb - ta;
+    });
+    return docs;
+  } catch (err) {
+    console.error(
+      `[admin-queries] listPerformancesByStatus(${status}) failed:`,
       err,
     );
     return [];

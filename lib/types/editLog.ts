@@ -1,7 +1,11 @@
 import type { Timestamp } from "firebase/firestore";
 import type { ContentStatus } from "./status";
 
-export type EditLogDocType = "competition" | "admission" | "video";
+export type EditLogDocType =
+  | "competition"
+  | "admission"
+  | "performance"
+  | "video";
 
 export interface EditLog {
   id: string;

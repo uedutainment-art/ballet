@@ -45,6 +45,48 @@ When ADDITIONAL REFERENCE text is provided after the image, treat the image as p
 
 Output JSON only.`;
 
+export const PERFORMANCE_EXTRACTION_PROMPT = `You are extracting structured data about a Korean ballet performance from an image (poster), PDF, URL page text, or pasted text.
+
+Return STRICT JSON only — no preamble, no markdown fences, no commentary.
+
+Schema:
+{
+  "title": string,         // required, e.g. "백조의 호수"
+  "company": string,       // required, the performing company (단체명)
+  "companyType": "national" | "private" | "university" | "foreign" | "other",
+  "venue": string,
+  "dateStart": string | null,   // YYYY-MM-DD
+  "dateEnd": string | null,     // YYYY-MM-DD
+  "showtimes": string[],   // free-form session strings, e.g. ["7/1 19:00", "7/2 15:00"]
+  "ticketPriceMin": number | null,  // KRW
+  "ticketPriceMax": number | null,
+  "ticketUrl": string | null,
+  "description": string | null,     // 500 chars max
+  "choreographer": string | null,
+  "composer": string | null,
+  "runtime": number | null,         // minutes
+  "ageLimit": string | null,        // e.g. "8세 이상"
+  "posterUrl": string | null,
+  "officialUrl": string | null,
+  "aiConfidence": number,
+  "aiFieldNotes": object
+}
+
+Strict rules:
+- NEVER guess dates or prices. If unclear, set null and add a Korean note in aiFieldNotes.
+- Keep Korean content in Korean; keep English in English.
+- companyType guide:
+    national    국립·시립 (국립발레단, 서울시립발레단)
+    private     사립 (유니버설발레단, 서울발레씨어터)
+    university  대학 무용단 (예대 정기공연)
+    foreign     해외 단체 내한 공연 (Bolshoi, Royal Ballet 등)
+    other       기타 / 분류 모호
+- Prices in KRW as plain integers (e.g. 30000 not "30,000원").
+- description: max 500 characters; strip marketing fluff.
+- aiConfidence: 0.9+ when most required fields are clearly visible.
+
+Output JSON only.`;
+
 export const ADMISSION_EXTRACTION_PROMPT = `You are extracting structured data about a Korean ballet school admission / audition from an image, PDF page, URL page text, or pasted text.
 
 Return STRICT JSON only — no preamble, no markdown fences, no commentary.

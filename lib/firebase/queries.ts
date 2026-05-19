@@ -14,15 +14,18 @@ import { db } from "@/lib/firebase/client";
 import {
   admissionConverter,
   competitionConverter,
+  performanceConverter,
 } from "@/lib/firebase/converters";
 import type {
   Competition,
   CompetitionCategory,
 } from "@/lib/types/competition";
 import type { Admission, SchoolType } from "@/lib/types/admission";
+import type { CompanyType, Performance } from "@/lib/types/performance";
 
 const COL = "competitions";
 const ADMISSIONS_COL = "admissions";
+const PERFORMANCES_COL = "performances";
 
 export type ListCompetitionsOptions = {
   limit?: number;
@@ -201,6 +204,82 @@ export async function listUrgentAdmissions(
     return filtered.slice(0, n);
   } catch (err) {
     console.error("[queries] listUrgentAdmissions failed:", err);
+    return [];
+  }
+}
+
+// ---------- Performances (M8) ----------
+
+export type ListPerformancesOptions = {
+  limit?: number;
+  companyType?: CompanyType;
+  search?: string;
+};
+
+export async function listPublishedPerformances(
+  opts: ListPerformancesOptions = {},
+): Promise<Performance[]> {
+  try {
+    const q = query(
+      collection(db, PERFORMANCES_COL).withConverter(performanceConverter),
+      where("status", "==", "PUBLISHED"),
+      fbLimit(opts.limit ?? 60),
+    );
+    const snap = await getDocs(q);
+    let docs = snap.docs.map((d) => d.data());
+
+    if (opts.companyType) {
+      docs = docs.filter((d) => d.companyType === opts.companyType);
+    }
+    if (opts.search) {
+      const needle = opts.search.trim().toLowerCase();
+      docs = docs.filter(
+        (d) =>
+          d.title.toLowerCase().includes(needle) ||
+          d.company.toLowerCase().includes(needle),
+      );
+    }
+    docs.sort((a, b) => {
+      const ta = a.dateStart?.toMillis() ?? Number.MAX_SAFE_INTEGER;
+      const tb = b.dateStart?.toMillis() ?? Number.MAX_SAFE_INTEGER;
+      return ta - tb; // soonest show first
+    });
+    return docs;
+  } catch (err) {
+    console.error("[queries] listPublishedPerformances failed:", err);
+    return [];
+  }
+}
+
+export async function getPerformanceById(
+  id: string,
+): Promise<Performance | null> {
+  try {
+    const ref = doc(db, PERFORMANCES_COL, id).withConverter(
+      performanceConverter,
+    );
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`[queries] getPerformanceById(${id}) failed:`, err);
+    return null;
+  }
+}
+
+// PUBLISHED performances whose dateStart is in the future, soonest first.
+export async function listUpcomingPerformances(
+  n: number,
+): Promise<Performance[]> {
+  try {
+    const all = await listPublishedPerformances({ limit: 100 });
+    const now = Date.now();
+    const upcoming = all.filter((p) => {
+      const end = p.dateEnd?.toMillis() ?? p.dateStart?.toMillis();
+      return !end || end >= now;
+    });
+    return upcoming.slice(0, n);
+  } catch (err) {
+    console.error("[queries] listUpcomingPerformances failed:", err);
     return [];
   }
 }

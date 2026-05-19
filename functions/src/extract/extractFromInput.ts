@@ -6,8 +6,10 @@ import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {
   extractAdmission,
   extractCompetition,
+  extractPerformance,
   type AdmissionExtractionResult,
   type ExtractionResult,
+  type PerformanceExtractionResult,
 } from "../ai/extract";
 import {fetchPageText} from "../ai/fetchPageText";
 
@@ -19,7 +21,7 @@ const OPENAI_KEY = defineSecret("OPENAI_API_KEY");
 
 type InputMode = "image" | "pdf" | "url" | "text";
 type ApplyMode = "overwrite" | "fill_empty" | "higher_confidence";
-type Domain = "competition" | "admission";
+type Domain = "competition" | "admission" | "performance";
 
 type CallRequest = {
   docId: string;
@@ -77,6 +79,25 @@ const EXTRACTABLE_FIELDS_BY_DOMAIN: Record<Domain, readonly string[]> = {
     "guidelineUrl",
     "officialUrl",
   ],
+  performance: [
+    "title",
+    "company",
+    "companyType",
+    "venue",
+    "dateStart",
+    "dateEnd",
+    "showtimes",
+    "ticketPriceMin",
+    "ticketPriceMax",
+    "ticketUrl",
+    "description",
+    "choreographer",
+    "composer",
+    "runtime",
+    "ageLimit",
+    "posterUrl",
+    "officialUrl",
+  ],
 };
 
 const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
@@ -93,11 +114,13 @@ const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
     "practical2",
     "announcementAt",
   ]),
+  performance: new Set(["dateStart", "dateEnd"]),
 };
 
 const COLLECTION_BY_DOMAIN: Record<Domain, string> = {
   competition: "competitions",
   admission: "admissions",
+  performance: "performances",
 };
 
 function isEmptyValue(v: unknown): boolean {
@@ -130,7 +153,10 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 
 function mergeWithMode(
   existing: Record<string, unknown>,
-  extracted: ExtractionResult | AdmissionExtractionResult,
+  extracted:
+    | ExtractionResult
+    | AdmissionExtractionResult
+    | PerformanceExtractionResult,
   applyMode: ApplyMode,
   domain: Domain,
 ): {patch: Record<string, unknown>; changedFields: string[]} {
@@ -193,6 +219,14 @@ function buildContextLine(
       "same fields, preferring concrete facts over assumptions.\n\n"
     );
   }
+  if (domain === "performance") {
+    return (
+      `Existing performance record being updated: "${existing.title ?? ""}" — ` +
+      `company "${existing.company ?? ""}". ` +
+      "The new source below describes the SAME production; extract the same " +
+      "fields, preferring concrete facts over assumptions.\n\n"
+    );
+  }
   return (
     `Existing record being updated: "${existing.name ?? ""}" — host "${existing.host ?? ""}". ` +
     "The new source below describes the SAME event; extract the same fields, " +
@@ -209,6 +243,9 @@ function docTitleFor(
     const school = data.schoolName ?? "";
     const dept = data.department ?? "";
     return school || dept ? `${school} ${dept}`.trim() : fallback;
+  }
+  if (domain === "performance") {
+    return (data.title as string) || fallback;
   }
   return (data.name as string) || fallback;
 }
@@ -240,7 +277,11 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
         "docId, domain, mode, applyMode are required",
       );
     }
-    if (domain !== "competition" && domain !== "admission") {
+    if (
+      domain !== "competition" &&
+      domain !== "admission" &&
+      domain !== "performance"
+    ) {
       throw new HttpsError("invalid-argument", `Unknown domain: ${domain}`);
     }
     if (!["image", "pdf", "url", "text"].includes(mode)) {
@@ -271,7 +312,9 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
     const runExtractor = (input: {imageDataUrl?: string; supplementText?: string}) =>
       domain === "admission" ?
         extractAdmission(input, OPENAI_KEY.value()) :
-        extractCompetition(input, OPENAI_KEY.value());
+        domain === "performance" ?
+          extractPerformance(input, OPENAI_KEY.value()) :
+          extractCompetition(input, OPENAI_KEY.value());
 
     let extractionResult;
     switch (mode) {
@@ -347,7 +390,9 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
         domain === "admission" ?
           `${existing.schoolName ?? ""} ${existing.department ?? ""}`.trim() ||
             docId :
-          (existing.name as string) || docId;
+          domain === "performance" ?
+            (existing.title as string) || docId :
+            (existing.name as string) || docId;
 
       await db.collection("editLogs").add({
         docRef: `${collection}/${docId}`,

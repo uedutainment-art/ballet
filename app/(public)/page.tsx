@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { CompetitionCard } from "@/components/public/CompetitionCard";
 import { AdmissionCard } from "@/components/public/AdmissionCard";
+import { PerformanceCard } from "@/components/public/PerformanceCard";
 import {
+  listUpcomingPerformances,
   listUrgentAdmissions,
   listUrgentCompetitions,
 } from "@/lib/firebase/queries";
@@ -12,9 +14,10 @@ import {
 export const revalidate = 300;
 
 export default async function Home() {
-  const [urgent, admissions] = await Promise.all([
+  const [urgent, admissions, performances] = await Promise.all([
     listUrgentCompetitions(4),
     listUrgentAdmissions(3, 90),
+    listUpcomingPerformances(3),
   ]);
 
   return (
@@ -133,6 +136,50 @@ export default async function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {admissions.map((a) => (
                 <AdmissionCard key={a.id} admission={a} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="px-6 py-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex items-baseline justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-serif font-medium text-ink">
+                다가오는 공연
+                <span className="ml-2 text-sm text-warm-gray font-sans font-normal">
+                  {performances.length}건
+                </span>
+              </h2>
+              <p className="mt-1 text-xs text-warm-gray">
+                가까운 발레 무대를 일정 순으로 보여드려요
+              </p>
+            </div>
+            <Link
+              href="/performances"
+              className="text-sm text-brand hover:underline"
+            >
+              전체 보기 →
+            </Link>
+          </div>
+
+          {performances.length === 0 ? (
+            <div className="border border-dashed border-border rounded-md bg-white py-16 text-center">
+              <div className="text-sm text-warm-gray">
+                예정된 공연이 없어요
+              </div>
+              <Link
+                href="/performances"
+                className="mt-3 inline-block text-xs text-brand hover:underline"
+              >
+                지난 공연 보기 →
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {performances.map((p) => (
+                <PerformanceCard key={p.id} performance={p} />
               ))}
             </div>
           )}

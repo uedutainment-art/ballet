@@ -31,10 +31,16 @@ const items: NavItem[] = [
     visible: () => true,
   },
   {
+    label: "공연",
+    href: "/admin/performances",
+    enabled: true,
+    visible: () => true,
+  },
+  {
     label: "영상",
     href: "/admin/videos",
     enabled: false,
-    disabledTag: "M7",
+    disabledTag: "M7+",
     visible: () => true,
   },
   {
