@@ -55,14 +55,22 @@ export async function listByStatus(
   limit = 30,
 ): Promise<Competition[]> {
   try {
+    // No `orderBy` on the server — the (status, aiCollectedAt) composite
+    // index isn't deployed, and admin lists stay small enough that sorting
+    // the ~limit items client-side is cheaper than maintaining the index.
     const q = query(
       collection(db, COL).withConverter(competitionConverter),
       where("status", "==", status),
-      orderBy("aiCollectedAt", "desc"),
       fbLimit(limit),
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data());
+    const docs = snap.docs.map((d) => d.data());
+    docs.sort((a, b) => {
+      const ta = a.aiCollectedAt?.toMillis() ?? 0;
+      const tb = b.aiCollectedAt?.toMillis() ?? 0;
+      return tb - ta; // newest collection first
+    });
+    return docs;
   } catch (err) {
     console.error(`[admin-queries] listByStatus(${status}) failed:`, err);
     return [];
