@@ -5,9 +5,11 @@ import {functions} from "@/lib/firebase/client";
 
 export type InputMode = "image" | "pdf" | "url" | "text";
 export type ApplyMode = "overwrite" | "fill_empty" | "higher_confidence";
+export type ReExtractDomain = "competition" | "admission";
 
 export type ReExtractRequest = {
-  competitionId: string;
+  docId: string;
+  domain: ReExtractDomain;
   mode: InputMode;
   applyMode: ApplyMode;
   payload: {

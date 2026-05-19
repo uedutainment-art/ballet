@@ -11,13 +11,18 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { competitionConverter } from "@/lib/firebase/converters";
+import {
+  admissionConverter,
+  competitionConverter,
+} from "@/lib/firebase/converters";
 import type {
   Competition,
   CompetitionCategory,
 } from "@/lib/types/competition";
+import type { Admission, SchoolType } from "@/lib/types/admission";
 
 const COL = "competitions";
+const ADMISSIONS_COL = "admissions";
 
 export type ListCompetitionsOptions = {
   limit?: number;
@@ -113,6 +118,89 @@ export async function listUrgentCompetitions(
     return snap.docs.map((d) => d.data());
   } catch (err) {
     console.error("[queries] listUrgentCompetitions failed:", err);
+    return [];
+  }
+}
+
+// ---------- Admissions (M7) ----------
+
+export type ListAdmissionsOptions = {
+  limit?: number;
+  schoolType?: SchoolType;
+  search?: string;
+};
+
+export async function listPublishedAdmissions(
+  opts: ListAdmissionsOptions = {},
+): Promise<Admission[]> {
+  try {
+    // No composite (status, schoolType, regEnd) index defined — keep the
+    // server query simple (status equality only) and sort/filter the
+    // small result set client-side.
+    const q = query(
+      collection(db, ADMISSIONS_COL).withConverter(admissionConverter),
+      where("status", "==", "PUBLISHED"),
+      fbLimit(opts.limit ?? 60),
+    );
+    const snap = await getDocs(q);
+    let docs = snap.docs.map((d) => d.data());
+
+    if (opts.schoolType) {
+      docs = docs.filter((d) => d.schoolType === opts.schoolType);
+    }
+    if (opts.search) {
+      const needle = opts.search.trim().toLowerCase();
+      docs = docs.filter(
+        (d) =>
+          d.schoolName.toLowerCase().includes(needle) ||
+          d.department.toLowerCase().includes(needle),
+      );
+    }
+    docs.sort((a, b) => {
+      const ta = a.regStart?.toMillis() ?? Number.MAX_SAFE_INTEGER;
+      const tb = b.regStart?.toMillis() ?? Number.MAX_SAFE_INTEGER;
+      return ta - tb; // earliest reg start first
+    });
+    return docs;
+  } catch (err) {
+    console.error("[queries] listPublishedAdmissions failed:", err);
+    return [];
+  }
+}
+
+export async function getAdmissionById(
+  id: string,
+): Promise<Admission | null> {
+  try {
+    const ref = doc(db, ADMISSIONS_COL, id).withConverter(admissionConverter);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`[queries] getAdmissionById(${id}) failed:`, err);
+    return null;
+  }
+}
+
+// Returns PUBLISHED admissions whose registration starts within the next
+// `daysAhead` days, plus any already-open windows.
+export async function listUrgentAdmissions(
+  n: number,
+  daysAhead = 60,
+): Promise<Admission[]> {
+  try {
+    const all = await listPublishedAdmissions({ limit: 100 });
+    const now = Date.now();
+    const horizon = now + daysAhead * 24 * 60 * 60 * 1000;
+    const filtered = all.filter((a) => {
+      const regEnd = a.regEnd?.toMillis();
+      const regStart = a.regStart?.toMillis();
+      if (regEnd && regEnd < now) return false; // closed
+      if (regStart && regStart > horizon) return false; // too far out
+      return true;
+    });
+    return filtered.slice(0, n);
+  } catch (err) {
+    console.error("[queries] listUrgentAdmissions failed:", err);
     return [];
   }
 }

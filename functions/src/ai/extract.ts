@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 import * as logger from "firebase-functions/logger";
-import {COMPETITION_EXTRACTION_PROMPT} from "./prompts";
+import {
+  ADMISSION_EXTRACTION_PROMPT,
+  COMPETITION_EXTRACTION_PROMPT,
+} from "./prompts";
 
 export type CompetitionCategory =
   | "domestic_major"
@@ -194,4 +197,175 @@ export async function extractCompetitionFromImage(
     {imageDataUrl: imageUrl, supplementText: supplementText ?? undefined},
     apiKey,
   );
+}
+
+// ---------- Admission extraction (M7) ----------
+
+export type AdmissionSchoolType = "middle" | "high" | "university" | "grad";
+export type AdmissionCsat =
+  | "reflected"
+  | "not_reflected"
+  | "reference_only";
+
+export type AdmissionExtractionResult = {
+  schoolName: string;
+  department: string;
+  schoolType: AdmissionSchoolType;
+  year: number;
+  capacity: number | null;
+  regStart: string | null;
+  regEnd: string | null;
+  practical1: string | null;
+  practical2: string | null;
+  announcementAt: string | null;
+  subjects: string[];
+  csat: AdmissionCsat;
+  fee: string | null;
+  guidelineUrl: string | null;
+  officialUrl: string | null;
+  aiConfidence: number;
+  aiFieldNotes: Record<string, string>;
+};
+
+export type AdmissionExtractionOutcome =
+  | { ok: true; data: AdmissionExtractionResult; rawText: string }
+  | { ok: false; rawText: string; error: string };
+
+const VALID_SCHOOL_TYPES: AdmissionSchoolType[] = [
+  "middle",
+  "high",
+  "university",
+  "grad",
+];
+
+const VALID_CSAT: AdmissionCsat[] = [
+  "reflected",
+  "not_reflected",
+  "reference_only",
+];
+
+function asInt(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+  if (typeof v === "string") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.round(n);
+  }
+  return null;
+}
+
+function normalizeAdmission(
+  raw: unknown,
+): AdmissionExtractionResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const schoolName = asString(r.schoolName);
+  const department = asString(r.department);
+  const year = asInt(r.year);
+  if (!schoolName || !department || !year) return null;
+
+  const rawType = r.schoolType;
+  const schoolType: AdmissionSchoolType =
+    typeof rawType === "string" &&
+    VALID_SCHOOL_TYPES.includes(rawType as AdmissionSchoolType) ?
+      (rawType as AdmissionSchoolType) :
+      "university";
+
+  const rawCsat = r.csat;
+  const csat: AdmissionCsat =
+    typeof rawCsat === "string" &&
+    VALID_CSAT.includes(rawCsat as AdmissionCsat) ?
+      (rawCsat as AdmissionCsat) :
+      "not_reflected";
+
+  return {
+    schoolName,
+    department,
+    schoolType,
+    year,
+    capacity: asInt(r.capacity),
+    regStart: asString(r.regStart),
+    regEnd: asString(r.regEnd),
+    practical1: asString(r.practical1),
+    practical2: asString(r.practical2),
+    announcementAt: asString(r.announcementAt),
+    subjects: asStringArray(r.subjects),
+    csat,
+    fee: asString(r.fee),
+    guidelineUrl: asString(r.guidelineUrl),
+    officialUrl: asString(r.officialUrl),
+    aiConfidence: asConfidence(r.aiConfidence),
+    aiFieldNotes: asNoteMap(r.aiFieldNotes),
+  };
+}
+
+export async function extractAdmission(
+  input: ExtractionInput,
+  apiKey: string,
+): Promise<AdmissionExtractionOutcome> {
+  if (!input.imageDataUrl && !(input.supplementText?.trim())) {
+    return {
+      ok: false,
+      rawText: "",
+      error: "No input — pass imageDataUrl, supplementText, or both",
+    };
+  }
+
+  const openai = new OpenAI({apiKey});
+  const content: Array<
+    | {type: "text"; text: string}
+    | {type: "image_url"; image_url: {url: string; detail: "high"}}
+  > = [{type: "text", text: ADMISSION_EXTRACTION_PROMPT}];
+
+  if (input.imageDataUrl) {
+    content.push({
+      type: "image_url",
+      image_url: {url: input.imageDataUrl, detail: "high"},
+    });
+  }
+  if (input.supplementText && input.supplementText.trim().length > 0) {
+    content.push({
+      type: "text",
+      text: "\n\nSOURCE TEXT:\n\n" + input.supplementText,
+    });
+  }
+
+  let resp;
+  try {
+    resp = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{role: "user", content}],
+      response_format: {type: "json_object"},
+      max_tokens: 1500,
+      temperature: 0.1,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[extract-admission] OpenAI call failed", {error: msg});
+    return {ok: false, rawText: "", error: msg};
+  }
+
+  const rawText = resp.choices[0]?.message?.content ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {ok: false, rawText, error: "JSON parse failed"};
+  }
+
+  const normalized = normalizeAdmission(parsed);
+  if (!normalized) {
+    return {
+      ok: false,
+      rawText,
+      error: "Missing required fields (schoolName, department, year)",
+    };
+  }
+
+  logger.info("[extract-admission] OK", {
+    school: normalized.schoolName,
+    year: normalized.year,
+    confidence: normalized.aiConfidence,
+  });
+  return {ok: true, data: normalized, rawText};
 }

@@ -15,11 +15,6 @@ import {
 } from "lucide-react";
 import {Button} from "@/components/ui/Button";
 import {Input, Textarea} from "@/components/ui/Input";
-import {
-  CATEGORY_GRADIENTS,
-  CATEGORY_LABELS,
-  type Competition,
-} from "@/lib/types/competition";
 import {fileToDataUrl, pdfFirstPageToPng} from "@/lib/admin/pdfToImage";
 import {
   APPLY_MODES,
@@ -28,12 +23,23 @@ import {
   callReExtract,
   type ApplyMode,
   type InputMode,
+  type ReExtractDomain,
   type ReExtractResponse,
 } from "@/lib/admin/reExtract";
 import {cn} from "@/lib/cn";
 
+export type SourcePaneTarget = {
+  id: string;
+  domain: ReExtractDomain;
+  posterUrl?: string;
+  officialUrl?: string;
+  accentColorFrom: string; // for fallback gradient
+  accentColorTo: string;
+  accentLabel: string;
+};
+
 type Props = {
-  competition: Competition;
+  target: SourcePaneTarget;
   onReExtracted: (response: ReExtractResponse) => void;
 };
 
@@ -46,7 +52,7 @@ const TABS: Array<{key: InputMode; label: string; icon: typeof ImageIcon}> = [
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-export function SourcePane({competition: c, onReExtracted}: Props) {
+export function SourcePane({target, onReExtracted}: Props) {
   const [tab, setTab] = useState<InputMode>("image");
   const [applyMode, setApplyMode] = useState<ApplyMode>("fill_empty");
   const [busy, setBusy] = useState(false);
@@ -146,7 +152,8 @@ export function SourcePane({competition: c, onReExtracted}: Props) {
       }
 
       const res = await callReExtract({
-        competitionId: c.id,
+        docId: target.id,
+        domain: target.domain,
         mode: tab,
         applyMode,
         payload,
@@ -178,8 +185,8 @@ export function SourcePane({competition: c, onReExtracted}: Props) {
 
   return (
     <aside className="bg-white border border-border rounded-md p-4 flex flex-col gap-4">
-      {/* Existing poster reference */}
-      <OriginalPoster competition={c} />
+      {/* Existing source reference */}
+      <OriginalSource target={target} />
 
       {/* Tab strip */}
       <div className="flex gap-1 border-b border-border overflow-x-auto -mx-1 px-1">
@@ -348,14 +355,21 @@ export function SourcePane({competition: c, onReExtracted}: Props) {
   );
 }
 
-function OriginalPoster({competition: c}: {competition: Competition}) {
-  const [gFrom, gTo] = CATEGORY_GRADIENTS[c.category];
+function OriginalSource({target}: {target: SourcePaneTarget}) {
+  const hasPoster = !!target.posterUrl;
+  const sourceLabel =
+    target.domain === "competition" ? "📷 현재 원본 자료" : "📌 현재 기준 자료";
+  const sourceDetail =
+    target.domain === "competition" ?
+      hasPoster ? "포스터 이미지 있음" : "포스터 없음" :
+      "포스터 없음 (입시)";
+
   return (
     <div className="flex items-center gap-3 pb-2 border-b border-border">
       <div className="relative w-12 h-16 rounded-sm overflow-hidden border border-border bg-cream-start/40 shrink-0">
-        {c.posterUrl ? (
+        {hasPoster ? (
           <Image
-            src={c.posterUrl}
+            src={target.posterUrl!}
             alt=""
             fill
             sizes="48px"
@@ -365,16 +379,15 @@ function OriginalPoster({competition: c}: {competition: Competition}) {
           <div
             className="absolute inset-0"
             style={{
-              background: `linear-gradient(135deg, ${gFrom} 0%, ${gTo} 100%)`,
+              background: `linear-gradient(135deg, ${target.accentColorFrom} 0%, ${target.accentColorTo} 100%)`,
             }}
           />
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-warm-gray">📷 현재 원본 자료</div>
+        <div className="text-xs text-warm-gray">{sourceLabel}</div>
         <div className="text-[11px] text-warm-gray/70 mt-0.5">
-          {c.posterUrl ? "포스터 이미지 있음" : "포스터 없음"} ·{" "}
-          {CATEGORY_LABELS[c.category]}
+          {sourceDetail} · {target.accentLabel}
         </div>
       </div>
       <span className="text-[10px] text-warm-gray text-right shrink-0">

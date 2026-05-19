@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "seed:competitions": "tsx scripts/seed-competitions.ts",
-    "seed:superadmin": "tsx scripts/seed-superadmin.ts"
+    "seed:superadmin": "tsx scripts/seed-superadmin.ts",
+    "seed:admissions": "tsx scripts/seed-admissions.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

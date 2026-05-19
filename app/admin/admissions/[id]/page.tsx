@@ -12,19 +12,19 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { getCompetitionById } from "@/lib/firebase/queries";
+import { getAdmissionById } from "@/lib/firebase/queries";
 import { recordEdit } from "@/lib/firebase/editLogs";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { FieldsPane } from "@/components/admin/FieldsPane";
+import { AdmissionFieldsPane } from "@/components/admin/AdmissionFieldsPane";
 import { SourcePane } from "@/components/admin/SourcePane";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusTransitionBar } from "@/components/admin/StatusTransitionBar";
 import { useAutosave } from "@/lib/admin/useAutosave";
 import { useShortcuts } from "@/lib/admin/useShortcuts";
 import {
-  competitionFormSchema,
-  type CompetitionFormValues,
-} from "@/lib/zod/competition";
+  admissionFormSchema,
+  type AdmissionFormValues,
+} from "@/lib/zod/admission";
 import {
   transitionToArchived,
   transitionToHold,
@@ -34,10 +34,10 @@ import {
 } from "@/lib/admin/transitions";
 import { isAdminOrAbove } from "@/lib/types/user";
 import {
-  CATEGORY_GRADIENTS,
-  CATEGORY_LABELS,
-  type Competition,
-} from "@/lib/types/competition";
+  SCHOOL_TYPE_COLORS,
+  SCHOOL_TYPE_LABELS,
+  type Admission,
+} from "@/lib/types/admission";
 import type { ContentStatus } from "@/lib/types/status";
 
 // ---------- Conversion helpers ----------
@@ -55,103 +55,106 @@ function inputDateToTs(s: string | undefined): Timestamp | undefined {
   return Timestamp.fromDate(new Date(y, m - 1, d));
 }
 
-function competitionToForm(c: Competition): CompetitionFormValues {
+function admissionToForm(a: Admission): AdmissionFormValues {
   return {
-    name: c.name ?? "",
-    category: c.category,
-    host: c.host ?? "",
-    edition: c.edition ?? "",
-    dateStart: tsToInputDate(c.dateStart),
-    dateEnd: tsToInputDate(c.dateEnd),
-    registrationStart: tsToInputDate(c.registrationStart),
-    registrationEnd: tsToInputDate(c.registrationEnd),
-    venue: c.venue ?? "",
-    sectionsCsv: (c.sections ?? []).join(", "),
-    ageGroupsCsv: (c.ageGroups ?? []).join(", "),
-    fee: c.fee ?? "",
-    awards: c.awards ?? "",
-    officialUrl: c.officialUrl ?? "",
-    registerUrl: c.registerUrl ?? "",
-    posterUrl: c.posterUrl ?? "",
-    notes: c.notes ?? "",
+    schoolName: a.schoolName ?? "",
+    department: a.department ?? "",
+    schoolType: a.schoolType,
+    year: a.year,
+    capacity: a.capacity,
+    regStart: tsToInputDate(a.regStart),
+    regEnd: tsToInputDate(a.regEnd),
+    practical1: tsToInputDate(a.practical1),
+    practical2: tsToInputDate(a.practical2),
+    announcementAt: tsToInputDate(a.announcementAt),
+    subjectsCsv: (a.subjects ?? []).join(", "),
+    csat: a.csat,
+    fee: a.fee ?? "",
+    guidelineUrl: a.guidelineUrl ?? "",
+    officialUrl: a.officialUrl ?? "",
+    bonusCompetitionsCsv: (a.bonusCompetitions ?? []).join(", "),
+    notes: a.notes ?? "",
   };
 }
 
-function formToPatch(v: CompetitionFormValues): Record<string, unknown> {
+function formToPatch(v: AdmissionFormValues): Record<string, unknown> {
   const patch: Record<string, unknown> = {
-    name: v.name,
-    category: v.category,
-    host: v.host,
-    venue: v.venue,
+    schoolName: v.schoolName,
+    department: v.department,
+    schoolType: v.schoolType,
+    year: typeof v.year === "string" ? Number(v.year) : v.year,
+    csat: v.csat,
     officialUrl: v.officialUrl,
-    sections: (v.sectionsCsv ?? "")
+    subjects: (v.subjectsCsv ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
-    ageGroups: (v.ageGroupsCsv ?? "")
+    bonusCompetitions: (v.bonusCompetitionsCsv ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
-    edition: v.edition ?? "",
     fee: v.fee ?? "",
-    awards: v.awards ?? "",
-    registerUrl: v.registerUrl ?? "",
-    posterUrl: v.posterUrl ?? "",
+    guidelineUrl: v.guidelineUrl ?? "",
     notes: v.notes ?? "",
   };
-  const dateStart = inputDateToTs(v.dateStart);
-  const dateEnd = inputDateToTs(v.dateEnd);
-  const regStart = inputDateToTs(v.registrationStart);
-  const regEnd = inputDateToTs(v.registrationEnd);
-  if (dateStart) patch.dateStart = dateStart;
-  if (dateEnd) patch.dateEnd = dateEnd;
-  if (regStart) patch.registrationStart = regStart;
-  if (regEnd) patch.registrationEnd = regEnd;
+  const regS = inputDateToTs(v.regStart);
+  const regE = inputDateToTs(v.regEnd);
+  const p1 = inputDateToTs(v.practical1);
+  const p2 = inputDateToTs(v.practical2);
+  const ann = inputDateToTs(v.announcementAt);
+  if (regS) patch.regStart = regS;
+  if (regE) patch.regEnd = regE;
+  if (p1) patch.practical1 = p1;
+  if (p2) patch.practical2 = p2;
+  if (ann) patch.announcementAt = ann;
+  if (v.capacity !== undefined && v.capacity !== null) {
+    patch.capacity = typeof v.capacity === "string" ?
+      Number(v.capacity) :
+      v.capacity;
+  }
   return patch;
 }
 
 function diffKeys(
-  before: CompetitionFormValues,
-  after: CompetitionFormValues,
+  before: AdmissionFormValues,
+  after: AdmissionFormValues,
 ): string[] {
-  const keys = Object.keys(after) as Array<keyof CompetitionFormValues>;
+  const keys = Object.keys(after) as Array<keyof AdmissionFormValues>;
   return keys.filter((k) => before[k] !== after[k]);
 }
 
 // ---------- Page ----------
 
-export default function EditorPage() {
+export default function AdmissionEditorPage() {
   const params = useParams() as { id: string };
   const router = useRouter();
   const { user, userDoc } = useAuth();
 
-  const [competition, setCompetition] = useState<Competition | null>(null);
+  const [admission, setAdmission] = useState<Admission | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  // Fields just updated by a re-extract; rendered with a halo for ~1.5s.
   const [recentlyUpdated, setRecentlyUpdated] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
 
-  const methods = useForm<CompetitionFormValues>({
-    resolver: zodResolver(competitionFormSchema),
+  const methods = useForm<AdmissionFormValues>({
+    resolver: zodResolver(admissionFormSchema),
     defaultValues: undefined,
     mode: "onChange",
   });
 
-  // Snapshot of the last persisted values — used to compute changed fields.
   const [lastSavedValues, setLastSavedValues] =
-    useState<CompetitionFormValues | null>(null);
+    useState<AdmissionFormValues | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const c = await getCompetitionById(params.id);
+      const a = await getAdmissionById(params.id);
       if (cancelled) return;
-      setCompetition(c);
-      if (c) {
-        const formValues = competitionToForm(c);
+      setAdmission(a);
+      if (a) {
+        const formValues = admissionToForm(a);
         methods.reset(formValues);
         setLastSavedValues(formValues);
       }
@@ -160,7 +163,6 @@ export default function EditorPage() {
     return () => {
       cancelled = true;
     };
-    // methods is stable; reset is fine to call here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
@@ -178,10 +180,8 @@ export default function EditorPage() {
     setTimeout(() => setToast(null), 2000);
   }, []);
 
-  // ---------- Save (used by both autosave and ⌘S) ----------
-
   const save = useCallback(async (): Promise<void> => {
-    if (!competition) return;
+    if (!admission) return;
     const ok = await methods.trigger();
     if (!ok) {
       showToast("필수 항목을 확인해 주세요");
@@ -190,33 +190,31 @@ export default function EditorPage() {
     const values = methods.getValues();
     const patch = formToPatch(values);
     patch.lastUpdatedAt = serverTimestamp();
-    await updateDoc(doc(db, "competitions", competition.id), patch);
+    await updateDoc(doc(db, "admissions", admission.id), patch);
 
-    // Log only the fields that actually changed since last save.
-    const changed = lastSavedValues
-      ? diffKeys(lastSavedValues, values)
-      : Object.keys(values);
+    const changed = lastSavedValues ?
+      diffKeys(lastSavedValues, values) :
+      Object.keys(values);
     if (changed.length > 0 && user?.uid) {
       await recordEdit({
-        docRef: `competitions/${competition.id}`,
-        docType: "competition",
-        docTitle: values.name || competition.name,
+        docRef: `admissions/${admission.id}`,
+        docType: "admission",
+        docTitle:
+          (values.schoolName || admission.schoolName) +
+          " " +
+          (values.department || admission.department),
         userId: actor.uid,
         userDisplayName: actor.displayName,
-        fromStatus: competition.status,
-        toStatus: competition.status,
+        fromStatus: admission.status,
+        toStatus: admission.status,
         changedFields: changed,
       });
     }
 
     setLastSavedValues(values);
     methods.reset(values, { keepDirty: false });
-  }, [competition, methods, lastSavedValues, actor, showToast, user?.uid]);
+  }, [admission, methods, lastSavedValues, actor, showToast, user?.uid]);
 
-  // ---------- Autosave wiring ----------
-
-  // Subscribe to all values for the change marker. Cheap enough for ~16
-  // fields; switch to per-field subscriptions if the form grows.
   const watched = methods.watch();
   const changeMarker = JSON.stringify(watched);
   const dirty = methods.formState.isDirty;
@@ -233,8 +231,6 @@ export default function EditorPage() {
     },
   });
 
-  // ---------- Status transitions ----------
-
   const runTransition = useCallback(
     async (
       label: string,
@@ -244,27 +240,29 @@ export default function EditorPage() {
           docTitle: string;
           fromStatus: ContentStatus;
           collection: string;
-          docType: "competition";
+          docType: "admission";
         },
         actor: { uid: string; displayName: string },
       ) => Promise<void>,
     ) => {
-      if (!competition || !user?.uid) return;
+      if (!admission || !user?.uid) return;
       setBusy(true);
       try {
         await fn(
           {
-            id: competition.id,
-            docTitle: methods.getValues("name") || competition.name,
-            fromStatus: competition.status,
-            collection: "competitions",
-            docType: "competition",
+            id: admission.id,
+            docTitle:
+              (methods.getValues("schoolName") || admission.schoolName) +
+              " " +
+              (methods.getValues("department") || admission.department),
+            fromStatus: admission.status,
+            collection: "admissions",
+            docType: "admission",
           },
           actor,
         );
-        // Refetch to update local status badge / available transitions.
-        const fresh = await getCompetitionById(competition.id);
-        if (fresh) setCompetition(fresh);
+        const fresh = await getAdmissionById(admission.id);
+        if (fresh) setAdmission(fresh);
         showToast(label);
       } catch (err) {
         console.error(err);
@@ -273,45 +271,46 @@ export default function EditorPage() {
         setBusy(false);
       }
     },
-    [competition, user?.uid, actor, methods, showToast],
+    [admission, user?.uid, actor, methods, showToast],
   );
 
   const onReady = useCallback(async () => {
-    if (!competition) return;
-    if (competition.status === "DRAFT") {
+    if (!admission) return;
+    if (admission.status === "DRAFT" || admission.status === "IN_REVIEW") {
       await runTransition("READY로 넘김", transitionToReady);
-    } else if (competition.status === "IN_REVIEW") {
-      await runTransition("READY로 넘김", transitionToReady);
-    } else if (competition.status === "READY") {
+    } else if (admission.status === "READY") {
       await runTransition("공개됐어요", transitionToPublished);
     }
-  }, [competition, runTransition]);
+  }, [admission, runTransition]);
 
   const onPublish = useCallback(
     () => runTransition("공개됐어요", transitionToPublished),
     [runTransition],
   );
-
   const onHold = useCallback(
     () => runTransition("보류로 전환했어요", transitionToHold),
     [runTransition],
   );
-
   const onArchive = useCallback(
     () => runTransition("보관함으로 옮겼어요", transitionToArchived),
     [runTransition],
   );
 
-  // ---------- Re-extract callback (from SourcePane) ----------
+  // DRAFT → IN_REVIEW on first edit.
+  useEffect(() => {
+    if (!admission || admission.status !== "DRAFT" || !dirty || !user?.uid)
+      return;
+    void runTransition("검수 시작", transitionToInReview);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admission?.status, dirty]);
 
   const onReExtracted = useCallback(
     async (res: { fieldsUpdated: string[]; confidence: number }) => {
-      if (!competition) return;
-      // The Cloud Function already wrote to Firestore. Refetch + reset form.
-      const fresh = await getCompetitionById(competition.id);
+      if (!admission) return;
+      const fresh = await getAdmissionById(admission.id);
       if (fresh) {
-        setCompetition(fresh);
-        const values = competitionToForm(fresh);
+        setAdmission(fresh);
+        const values = admissionToForm(fresh);
         methods.reset(values);
         setLastSavedValues(values);
       }
@@ -323,19 +322,8 @@ export default function EditorPage() {
         );
       }
     },
-    [competition, methods, showToast],
+    [admission, methods, showToast],
   );
-
-  // Move DRAFT → IN_REVIEW automatically on first edit.
-  useEffect(() => {
-    if (!competition || competition.status !== "DRAFT" || !dirty || !user?.uid)
-      return;
-    void runTransition("검수 시작", transitionToInReview);
-    // Only fire once per mount + per dirty flip.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competition?.status, dirty]);
-
-  // ---------- Shortcuts ----------
 
   useShortcuts({
     onSave: () => {
@@ -345,17 +333,15 @@ export default function EditorPage() {
     onHold,
   });
 
-  // ---------- Render ----------
-
   if (loading) {
     return <div className="text-sm text-warm-gray">불러오는 중…</div>;
   }
-  if (!competition) {
+  if (!admission) {
     return (
       <div className="space-y-3">
         <div className="text-sm text-warm-gray">찾을 수 없어요</div>
         <Link
-          href="/admin/competitions"
+          href="/admin/admissions"
           className="text-xs text-brand hover:underline"
         >
           ← 검수 큐로
@@ -368,20 +354,25 @@ export default function EditorPage() {
     <FormProvider {...methods}>
       <div className="space-y-4 relative pb-4">
         <nav className="text-xs text-warm-gray">
-          <Link href="/admin/competitions" className="hover:text-ink">
-            콩쿠르 검수
+          <Link href="/admin/admissions" className="hover:text-ink">
+            입시 검수
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-ink">{competition.name}</span>
+          <span className="text-ink">
+            {admission.schoolName} · {admission.department}
+          </span>
         </nav>
 
         <header className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-serif text-ink">{competition.name}</h1>
-          <StatusBadge status={competition.status} />
+          <h1 className="text-xl font-serif text-ink">
+            {admission.schoolName}{" "}
+            <span className="text-warm-gray">· {admission.department}</span>
+          </h1>
+          <StatusBadge status={admission.status} />
           <div className="flex-1" />
           <button
             type="button"
-            onClick={() => router.push("/admin/competitions")}
+            onClick={() => router.push("/admin/admissions")}
             className="text-xs text-warm-gray hover:text-ink"
           >
             ← 목록으로
@@ -391,26 +382,26 @@ export default function EditorPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
           <SourcePane
             target={{
-              id: competition.id,
-              domain: "competition",
-              posterUrl: competition.posterUrl,
-              officialUrl: competition.officialUrl,
-              accentColorFrom: CATEGORY_GRADIENTS[competition.category][0],
-              accentColorTo: CATEGORY_GRADIENTS[competition.category][1],
-              accentLabel: CATEGORY_LABELS[competition.category],
+              id: admission.id,
+              domain: "admission",
+              posterUrl: undefined,
+              officialUrl: admission.officialUrl,
+              accentColorFrom: SCHOOL_TYPE_COLORS[admission.schoolType],
+              accentColorTo: SCHOOL_TYPE_COLORS[admission.schoolType],
+              accentLabel: SCHOOL_TYPE_LABELS[admission.schoolType],
             }}
             onReExtracted={onReExtracted}
           />
-          <FieldsPane
-            aiConfidence={competition.aiConfidence}
-            aiFieldNotes={competition.aiFieldNotes}
+          <AdmissionFieldsPane
+            aiConfidence={admission.aiConfidence}
+            aiFieldNotes={admission.aiFieldNotes}
             autosave={autosaveStatus}
             recentlyUpdated={recentlyUpdated}
           />
         </div>
 
         <StatusTransitionBar
-          status={competition.status}
+          status={admission.status}
           dirty={dirty}
           canPublish={canPublish}
           busy={busy}

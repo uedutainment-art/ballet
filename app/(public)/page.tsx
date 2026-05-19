@@ -1,14 +1,21 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { CompetitionCard } from "@/components/public/CompetitionCard";
-import { listUrgentCompetitions } from "@/lib/firebase/queries";
+import { AdmissionCard } from "@/components/public/AdmissionCard";
+import {
+  listUrgentAdmissions,
+  listUrgentCompetitions,
+} from "@/lib/firebase/queries";
 
 // Revalidate every 5 minutes. Editor publishes new competitions and the page
 // catches up on the next request after this window without a full rebuild.
 export const revalidate = 300;
 
 export default async function Home() {
-  const urgent = await listUrgentCompetitions(4);
+  const [urgent, admissions] = await Promise.all([
+    listUrgentCompetitions(4),
+    listUrgentAdmissions(3, 90),
+  ]);
 
   return (
     <>
@@ -88,10 +95,56 @@ export default async function Home() {
         </div>
       </section>
 
+      <section className="px-6 py-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex items-baseline justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-serif font-medium text-ink">
+                최신 입시정보
+                <span className="ml-2 text-sm text-warm-gray font-sans font-normal">
+                  {admissions.length}건
+                </span>
+              </h2>
+              <p className="mt-1 text-xs text-warm-gray">
+                예술중 · 예술고 · 대학 · 대학원 입시 일정을 모아드려요
+              </p>
+            </div>
+            <Link
+              href="/admissions"
+              className="text-sm text-brand hover:underline"
+            >
+              전체 보기 →
+            </Link>
+          </div>
+
+          {admissions.length === 0 ? (
+            <div className="border border-dashed border-border rounded-md bg-white py-16 text-center">
+              <div className="text-sm text-warm-gray">
+                현재 모집 중인 입시가 없어요
+              </div>
+              <Link
+                href="/admissions"
+                className="mt-3 inline-block text-xs text-brand hover:underline"
+              >
+                지난 입시 보기 →
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {admissions.map((a) => (
+                <AdmissionCard key={a.id} admission={a} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="px-6 pb-24">
-        <div className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PlaceholderTile title="입시 정보" tagline="예고 · 대학 · 콩쿠르 일정을 모아 정리 중이에요" />
-          <PlaceholderTile title="강의 영상" tagline="베리에이션 · 솔로 영상 큐레이션이 곧 열려요" />
+        <div className="mx-auto max-w-7xl">
+          <PlaceholderTile
+            title="강의 영상"
+            tagline="베리에이션 · 솔로 영상 큐레이션이 곧 열려요"
+          />
         </div>
       </section>
     </>

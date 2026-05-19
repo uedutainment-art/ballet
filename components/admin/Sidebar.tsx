@@ -27,8 +27,7 @@ const items: NavItem[] = [
   {
     label: "입시",
     href: "/admin/admissions",
-    enabled: false,
-    disabledTag: "M7",
+    enabled: true,
     visible: () => true,
   },
   {

@@ -6,6 +6,7 @@ import {
 import { db } from "@/lib/firebase/client";
 import { recordEdit } from "@/lib/firebase/editLogs";
 import type { ContentStatus } from "@/lib/types/status";
+import type { EditLogDocType } from "@/lib/types/editLog";
 
 type Actor = { uid: string; displayName: string };
 
@@ -13,9 +14,9 @@ type Ctx = {
   id: string;
   docTitle: string;
   fromStatus: ContentStatus;
+  collection: string; // e.g. "competitions" | "admissions"
+  docType: EditLogDocType;
 };
-
-const COL = "competitions";
 
 async function transition(
   ctx: Ctx,
@@ -24,14 +25,14 @@ async function transition(
   toStatus: ContentStatus,
   extraChangedFields: string[] = [],
 ) {
-  await updateDoc(doc(db, COL, ctx.id), {
+  await updateDoc(doc(db, ctx.collection, ctx.id), {
     ...patch,
     status: toStatus,
     lastUpdatedAt: serverTimestamp(),
   });
   await recordEdit({
-    docRef: `${COL}/${ctx.id}`,
-    docType: "competition",
+    docRef: `${ctx.collection}/${ctx.id}`,
+    docType: ctx.docType,
     docTitle: ctx.docTitle,
     userId: actor.uid,
     userDisplayName: actor.displayName,

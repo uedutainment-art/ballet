@@ -4,7 +4,9 @@ import * as logger from "firebase-functions/logger";
 import {getApps, initializeApp} from "firebase-admin/app";
 import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {
+  extractAdmission,
   extractCompetition,
+  type AdmissionExtractionResult,
   type ExtractionResult,
 } from "../ai/extract";
 import {fetchPageText} from "../ai/fetchPageText";
@@ -17,9 +19,11 @@ const OPENAI_KEY = defineSecret("OPENAI_API_KEY");
 
 type InputMode = "image" | "pdf" | "url" | "text";
 type ApplyMode = "overwrite" | "fill_empty" | "higher_confidence";
+type Domain = "competition" | "admission";
 
 type CallRequest = {
-  competitionId: string;
+  docId: string;
+  domain: Domain;
   mode: InputMode;
   applyMode: ApplyMode;
   payload: {
@@ -36,32 +40,65 @@ type CallResponse = {
   fieldNotes: Record<string, string>;
 };
 
-// Fields the re-extraction is allowed to touch. Everything else (id, status,
-// source provenance, posterUrl, submitter info, timestamps) is preserved.
-const EXTRACTABLE_FIELDS = [
-  "name",
-  "host",
-  "edition",
-  "category",
-  "dateStart",
-  "dateEnd",
-  "registrationStart",
-  "registrationEnd",
-  "venue",
-  "sections",
-  "ageGroups",
-  "fee",
-  "awards",
-  "officialUrl",
-  "registerUrl",
-] as const;
+// Re-extractable fields per domain. Everything else (id, status, source
+// provenance, submitter info, timestamps) is preserved.
+const EXTRACTABLE_FIELDS_BY_DOMAIN: Record<Domain, readonly string[]> = {
+  competition: [
+    "name",
+    "host",
+    "edition",
+    "category",
+    "dateStart",
+    "dateEnd",
+    "registrationStart",
+    "registrationEnd",
+    "venue",
+    "sections",
+    "ageGroups",
+    "fee",
+    "awards",
+    "officialUrl",
+    "registerUrl",
+  ],
+  admission: [
+    "schoolName",
+    "department",
+    "schoolType",
+    "year",
+    "capacity",
+    "regStart",
+    "regEnd",
+    "practical1",
+    "practical2",
+    "announcementAt",
+    "subjects",
+    "csat",
+    "fee",
+    "guidelineUrl",
+    "officialUrl",
+  ],
+};
 
-const DATE_FIELDS = new Set([
-  "dateStart",
-  "dateEnd",
-  "registrationStart",
-  "registrationEnd",
-]);
+const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
+  competition: new Set([
+    "dateStart",
+    "dateEnd",
+    "registrationStart",
+    "registrationEnd",
+  ]),
+  admission: new Set([
+    "regStart",
+    "regEnd",
+    "practical1",
+    "practical2",
+    "announcementAt",
+  ]),
+};
+
+const COLLECTION_BY_DOMAIN: Record<Domain, string> = {
+  competition: "competitions",
+  admission: "admissions",
+};
 
 function isEmptyValue(v: unknown): boolean {
   if (v === undefined || v === null) return true;
@@ -93,11 +130,14 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 
 function mergeWithMode(
   existing: Record<string, unknown>,
-  extracted: ExtractionResult,
+  extracted: ExtractionResult | AdmissionExtractionResult,
   applyMode: ApplyMode,
+  domain: Domain,
 ): {patch: Record<string, unknown>; changedFields: string[]} {
-  // Higher-confidence is a meta-mode: it picks overwrite vs fill_empty based
-  // on whether the new extraction is more confident than what's on file.
+  const fields = EXTRACTABLE_FIELDS_BY_DOMAIN[domain];
+  const dateFields = DATE_FIELDS_BY_DOMAIN[domain];
+
+  // Higher-confidence: overwrite vs fill_empty based on new vs existing.
   const existingConfidence =
     typeof existing.aiConfidence === "number" ? existing.aiConfidence : 0;
   const effective: "overwrite" | "fill_empty" =
@@ -111,11 +151,12 @@ function mergeWithMode(
 
   const patch: Record<string, unknown> = {};
   const changedFields: string[] = [];
+  const extractedRec = extracted as unknown as Record<string, unknown>;
 
-  for (const field of EXTRACTABLE_FIELDS) {
-    const rawNew = (extracted as unknown as Record<string, unknown>)[field];
+  for (const field of fields) {
+    const rawNew = extractedRec[field];
     let newValue: unknown = rawNew;
-    if (DATE_FIELDS.has(field)) {
+    if (dateFields.has(field)) {
       newValue = parseDate(rawNew as string | null);
     }
     if (isEmptyValue(newValue)) continue;
@@ -130,13 +171,46 @@ function mergeWithMode(
 
   if (changedFields.length > 0) {
     patch.aiConfidence = extracted.aiConfidence;
-    // Merge notes: keep old notes for fields we didn't touch, overlay new.
     const existingNotes = (existing.aiFieldNotes as Record<string, string>) ??
       {};
     patch.aiFieldNotes = {...existingNotes, ...extracted.aiFieldNotes};
   }
 
   return {patch, changedFields};
+}
+
+// Build the "existing record being updated: …" context the LLM sees before
+// fresh source content. Different fields per domain.
+function buildContextLine(
+  existing: Record<string, unknown>,
+  domain: Domain,
+): string {
+  if (domain === "admission") {
+    return (
+      `Existing admission record being updated: "${existing.schoolName ?? ""}" — ` +
+      `department "${existing.department ?? ""}", year ${existing.year ?? "?"}. ` +
+      "The new source below describes the SAME admission cycle; extract the " +
+      "same fields, preferring concrete facts over assumptions.\n\n"
+    );
+  }
+  return (
+    `Existing record being updated: "${existing.name ?? ""}" — host "${existing.host ?? ""}". ` +
+    "The new source below describes the SAME event; extract the same fields, " +
+    "preferring concrete facts over assumptions.\n\n"
+  );
+}
+
+function docTitleFor(
+  domain: Domain,
+  data: Record<string, unknown>,
+  fallback: string,
+): string {
+  if (domain === "admission") {
+    const school = data.schoolName ?? "";
+    const dept = data.department ?? "";
+    return school || dept ? `${school} ${dept}`.trim() : fallback;
+  }
+  return (data.name as string) || fallback;
 }
 
 export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
@@ -159,12 +233,15 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
     }
 
     // ---- Validate request ----
-    const {competitionId, mode, applyMode, payload} = req.data ?? {};
-    if (!competitionId || !mode || !applyMode) {
+    const {docId, domain, mode, applyMode, payload} = req.data ?? {};
+    if (!docId || !domain || !mode || !applyMode) {
       throw new HttpsError(
         "invalid-argument",
-        "competitionId, mode, applyMode are required",
+        "docId, domain, mode, applyMode are required",
       );
+    }
+    if (domain !== "competition" && domain !== "admission") {
+      throw new HttpsError("invalid-argument", `Unknown domain: ${domain}`);
     }
     if (!["image", "pdf", "url", "text"].includes(mode)) {
       throw new HttpsError("invalid-argument", `Unknown mode: ${mode}`);
@@ -176,20 +253,26 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
       );
     }
 
-    // ---- Load existing competition for context + merge baseline ----
-    const compRef = db.collection("competitions").doc(competitionId);
-    const compSnap = await compRef.get();
-    if (!compSnap.exists) {
-      throw new HttpsError("not-found", "대회를 찾을 수 없어요");
+    const collection = COLLECTION_BY_DOMAIN[domain];
+
+    // ---- Load existing doc ----
+    const docRef = db.collection(collection).doc(docId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError(
+        "not-found",
+        domain === "admission" ? "입시 정보를 찾을 수 없어요" : "대회를 찾을 수 없어요",
+      );
     }
-    const existing = compSnap.data() ?? {};
+    const existing = docSnap.data() ?? {};
+    const contextLine = buildContextLine(existing, domain);
 
-    const contextLine =
-      `Existing record being updated: "${existing.name ?? ""}" — host "${existing.host ?? ""}". ` +
-      "The new source below describes the SAME event; extract the same fields, " +
-      "preferring concrete facts over assumptions.\n\n";
+    // ---- Run extraction (domain decides which model + schema) ----
+    const runExtractor = (input: {imageDataUrl?: string; supplementText?: string}) =>
+      domain === "admission" ?
+        extractAdmission(input, OPENAI_KEY.value()) :
+        extractCompetition(input, OPENAI_KEY.value());
 
-    // ---- Run extraction for the requested mode ----
     let extractionResult;
     switch (mode) {
     case "image":
@@ -200,13 +283,10 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
           `${mode} mode requires payload.dataUrl (data:... URL)`,
         );
       }
-      extractionResult = await extractCompetition(
-        {
-          imageDataUrl: payload.dataUrl,
-          supplementText: contextLine,
-        },
-        OPENAI_KEY.value(),
-      );
+      extractionResult = await runExtractor({
+        imageDataUrl: payload.dataUrl,
+        supplementText: contextLine,
+      });
       break;
     }
     case "url": {
@@ -223,10 +303,9 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
           "URL에서 본문을 읽지 못했어요 (404 / 비-HTML / 차단)",
         );
       }
-      extractionResult = await extractCompetition(
-        {supplementText: contextLine + pageText},
-        OPENAI_KEY.value(),
-      );
+      extractionResult = await runExtractor({
+        supplementText: contextLine + pageText,
+      });
       break;
     }
     case "text": {
@@ -237,10 +316,9 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
           "text mode requires non-empty payload.text",
         );
       }
-      extractionResult = await extractCompetition(
-        {supplementText: contextLine + text},
-        OPENAI_KEY.value(),
-      );
+      extractionResult = await runExtractor({
+        supplementText: contextLine + text,
+      });
       break;
     }
     }
@@ -257,30 +335,36 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
       existing,
       extractionResult.data,
       applyMode,
+      domain,
     );
 
     if (changedFields.length > 0) {
       patch.lastUpdatedAt = FieldValue.serverTimestamp();
-      await compRef.update(patch);
+      await docRef.update(patch);
+
+      const dataRec = extractionResult.data as unknown as Record<string, unknown>;
+      const fallbackTitle =
+        domain === "admission" ?
+          `${existing.schoolName ?? ""} ${existing.department ?? ""}`.trim() ||
+            docId :
+          (existing.name as string) || docId;
 
       await db.collection("editLogs").add({
-        docRef: `competitions/${competitionId}`,
-        docType: "competition",
-        docTitle:
-          (patch.name as string | undefined) ??
-          (existing.name as string | undefined) ??
-          competitionId,
+        docRef: `${collection}/${docId}`,
+        docType: domain,
+        docTitle: docTitleFor(domain, dataRec, fallbackTitle),
         userId: req.auth.uid,
         userDisplayName:
           (userSnap.data()?.displayName as string | undefined) ?? "Editor",
         timestamp: FieldValue.serverTimestamp(),
         changedFields,
-        note: `재추출 (${mode}, ${applyMode})`,
+        note: `재추출 (${domain}, ${mode}, ${applyMode})`,
       });
     }
 
     logger.info("[extract-input] done", {
-      competitionId,
+      docId,
+      domain,
       mode,
       applyMode,
       fieldsUpdated: changedFields.length,
