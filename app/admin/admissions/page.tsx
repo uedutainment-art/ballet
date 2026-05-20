@@ -8,6 +8,7 @@ import {
   listAdmissionsByStatus,
 } from "@/lib/firebase/admin-queries";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { NewDraftButton } from "@/components/admin/NewDraftButton";
 import { Badge } from "@/components/ui/Badge";
 import { SCHOOL_TYPE_LABELS, type Admission } from "@/lib/types/admission";
 import type { ContentStatus } from "@/lib/types/status";
@@ -94,6 +95,7 @@ function Inner() {
             상태별로 입시 정보를 정리해 드려요
           </p>
         </div>
+        <NewDraftButton domain="admission" />
       </header>
 
       <div className="flex gap-1 border-b border-border overflow-x-auto">

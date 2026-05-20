@@ -8,6 +8,7 @@ import {
   listPerformancesByStatus,
 } from "@/lib/firebase/admin-queries";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { NewDraftButton } from "@/components/admin/NewDraftButton";
 import { Badge } from "@/components/ui/Badge";
 import {
   COMPANY_TYPE_LABELS,
@@ -90,11 +91,14 @@ function Inner() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-serif text-ink">공연 검수</h1>
-        <p className="mt-1 text-sm text-warm-gray">
-          상태별로 공연 정보를 정리해 드려요
-        </p>
+      <header className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-serif text-ink">공연 검수</h1>
+          <p className="mt-1 text-sm text-warm-gray">
+            상태별로 공연 정보를 정리해 드려요
+          </p>
+        </div>
+        <NewDraftButton domain="performance" />
       </header>
 
       <div className="flex gap-1 border-b border-border overflow-x-auto">

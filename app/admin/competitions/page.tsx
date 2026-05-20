@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { countByStatus, listByStatus } from "@/lib/firebase/admin-queries";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { NewDraftButton } from "@/components/admin/NewDraftButton";
 import { Badge } from "@/components/ui/Badge";
 import type { Competition } from "@/lib/types/competition";
 import type { ContentStatus } from "@/lib/types/status";
@@ -92,14 +93,7 @@ function Inner() {
             상태별로 검수 대기 항목을 정리해 드려요
           </p>
         </div>
-        <button
-          type="button"
-          disabled
-          className="rounded-sm border border-border bg-white text-warm-gray px-3 py-1.5 text-xs cursor-not-allowed shrink-0"
-          title="다음 단계(T5)에서 활성화"
-        >
-          + 수동 추가 (T5)
-        </button>
+        <NewDraftButton domain="competition" />
       </header>
 
       <div className="flex gap-1 border-b border-border overflow-x-auto">
