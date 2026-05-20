@@ -118,5 +118,22 @@ service cloud.firestore {
       allow read: if isEditor();
       allow write: if false;
     }
+
+    // ─── Inquiries (M11.7) ───
+    // External users submit through the submitInquiry Cloud Function (Admin
+    // SDK) — direct client writes are blocked to keep rate-limit + recaptcha
+    // gates honest. Editors read + update from /admin/inquiries; only
+    // super-admin can delete.
+    match /inquiries/{id} {
+      allow create: if false;
+      allow read: if isEditor();
+      allow update: if isEditor();
+      allow delete: if role() == 'SUPER_ADMIN';
+    }
+
+    // Rate-limit ring used by submitInquiry. Hashed-IP keyed.
+    match /rateLimits/{id} {
+      allow read, write: if false;
+    }
   }
 }

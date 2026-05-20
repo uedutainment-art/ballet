@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { signOutUser } from "@/lib/firebase/auth";
+import { countOpenInquiries } from "@/lib/firebase/admin-queries";
 import type { UserDoc, UserRole } from "@/lib/types/user";
 import { isAdminOrAbove, isSuperAdmin } from "@/lib/types/user";
 import { cn } from "@/lib/cn";
@@ -55,6 +57,12 @@ const items: NavItem[] = [
     visible: () => true,
   },
   {
+    label: "제보",
+    href: "/admin/inquiries",
+    enabled: true,
+    visible: () => true,
+  },
+  {
     label: "승인 큐",
     href: "/admin/queue",
     enabled: true,
@@ -72,6 +80,23 @@ export function Sidebar({ userDoc }: { userDoc: UserDoc }) {
   const pathname = usePathname();
   const router = useRouter();
   const visible = items.filter((i) => i.visible(userDoc.role));
+
+  // Live count of NEW + IN_PROGRESS inquiries — shown as a red dot beside
+  // the "제보" menu so the operator notices new submissions at a glance.
+  const [openInquiries, setOpenInquiries] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      const n = await countOpenInquiries();
+      if (!cancelled) setOpenInquiries(n);
+    }
+    void tick();
+    const handle = setInterval(tick, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
+  }, []);
 
   async function handleSignOut() {
     await signOutUser();
@@ -109,18 +134,25 @@ export function Sidebar({ userDoc }: { userDoc: UserDoc }) {
             );
           }
 
+          const showBadge =
+            item.href === "/admin/inquiries" && openInquiries > 0;
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "block px-3 py-2 rounded-sm text-sm transition-colors",
+                "flex items-center justify-between px-3 py-2 rounded-sm text-sm transition-colors",
                 active
                   ? "bg-white/10 text-white"
                   : "text-white/70 hover:text-white hover:bg-white/5",
               )}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {showBadge ? (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-medium">
+                  {openInquiries > 99 ? "99+" : openInquiries}
+                </span>
+              ) : null}
             </Link>
           );
         })}

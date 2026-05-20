@@ -50,8 +50,14 @@ export function Footer() {
           <div>© 2026 K BALLET &amp; CO. · created by 포올</div>
           <div className="leading-relaxed">
             K BALLET에 표시된 각 기관의 로고와 상표는 해당 기관의 자산입니다.
-            식별·정보 제공 목적으로만 사용되며, 기관에서 삭제를 요청하시면
-            즉시 반영됩니다. 문의:{" "}
+            식별·정보 제공 목적으로 사용되며,{" "}
+            <Link
+              href="/contact"
+              className="text-brand hover:underline"
+            >
+              /contact 페이지
+            </Link>
+            로 삭제·수정을 요청해 주시면 1~3일 내 반영합니다. 직접 문의:{" "}
             <a
               href="mailto:uedutainment@gmail.com"
               className="hover:text-ink"

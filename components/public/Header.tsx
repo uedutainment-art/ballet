@@ -12,7 +12,7 @@ const navItems: NavItem[] = [
   { label: "공연정보", href: "/performances", active: true },
   { label: "영상", href: "/videos", active: true },
   { label: "기관", href: "/organizations", active: true },
-  { label: "커뮤니티", href: "/community" },
+  { label: "정보 제보", href: "/contact", active: true },
 ];
 
 export function Header() {

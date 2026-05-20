@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase/client";
 import {
   admissionConverter,
   competitionConverter,
+  inquiryConverter,
   organizationConverter,
   performanceConverter,
   videoConverter,
@@ -26,6 +27,7 @@ import type { Performance } from "@/lib/types/performance";
 import type { Video } from "@/lib/types/video";
 import type { Organization } from "@/lib/types/organization";
 import type { CrawlRun } from "@/lib/types/crawlRun";
+import type { Inquiry, InquiryStatus, InquiryType } from "@/lib/types/inquiry";
 import type { ContentStatus } from "@/lib/types/status";
 
 const COL = "competitions";
@@ -318,6 +320,78 @@ export async function listRecentCrawlRuns(
   } catch (err) {
     console.error("[admin-queries] listRecentCrawlRuns failed:", err);
     return [];
+  }
+}
+
+// ---------- Inquiries (M11.7) ----------
+
+const INQUIRIES_COL = "inquiries";
+
+export type InquiryFilter = {
+  status?: InquiryStatus | "open"; // "open" = NEW + IN_PROGRESS
+  type?: InquiryType;
+  limit?: number;
+};
+
+export async function listInquiries(
+  opts: InquiryFilter = {},
+): Promise<Inquiry[]> {
+  try {
+    const q = query(
+      collection(db, INQUIRIES_COL).withConverter(inquiryConverter),
+      orderBy("createdAt", "desc"),
+      fbLimit(opts.limit ?? 100),
+    );
+    const snap = await getDocs(q);
+    let docs = snap.docs.map((d) => d.data());
+    if (opts.status === "open") {
+      docs = docs.filter(
+        (i) => i.status === "NEW" || i.status === "IN_PROGRESS",
+      );
+    } else if (opts.status) {
+      docs = docs.filter((i) => i.status === opts.status);
+    }
+    if (opts.type) {
+      docs = docs.filter((i) => i.type === opts.type);
+    }
+    return docs;
+  } catch (err) {
+    console.error("[admin-queries] listInquiries failed:", err);
+    return [];
+  }
+}
+
+export async function getInquiryById(id: string): Promise<Inquiry | null> {
+  try {
+    const ref = doc(db, INQUIRIES_COL, id).withConverter(inquiryConverter);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`[admin-queries] getInquiryById(${id}) failed:`, err);
+    return null;
+  }
+}
+
+export async function countOpenInquiries(): Promise<number> {
+  try {
+    const [a, b] = await Promise.all([
+      getCountFromServer(
+        query(
+          collection(db, INQUIRIES_COL),
+          where("status", "==", "NEW"),
+        ),
+      ),
+      getCountFromServer(
+        query(
+          collection(db, INQUIRIES_COL),
+          where("status", "==", "IN_PROGRESS"),
+        ),
+      ),
+    ]);
+    return a.data().count + b.data().count;
+  } catch (err) {
+    console.error("[admin-queries] countOpenInquiries failed:", err);
+    return 0;
   }
 }
 

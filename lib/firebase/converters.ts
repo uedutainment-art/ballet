@@ -8,6 +8,7 @@ import type { Admission } from "@/lib/types/admission";
 import type { Performance } from "@/lib/types/performance";
 import type { Video } from "@/lib/types/video";
 import type { Organization } from "@/lib/types/organization";
+import type { Inquiry } from "@/lib/types/inquiry";
 
 // Converter strips/restores the `id` field so it never lands in document data
 // but is always available on the returned object.
@@ -76,5 +77,17 @@ export const organizationConverter: FirestoreDataConverter<Organization> = {
       ...(data as Omit<Organization, "id">),
       id: snap.id,
     } as Organization;
+  },
+};
+
+export const inquiryConverter: FirestoreDataConverter<Inquiry> = {
+  toFirestore(data) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...rest } = data;
+    return rest;
+  },
+  fromFirestore(snap: QueryDocumentSnapshot, options?: SnapshotOptions) {
+    const data = snap.data(options);
+    return { ...(data as Omit<Inquiry, "id">), id: snap.id } as Inquiry;
   },
 };

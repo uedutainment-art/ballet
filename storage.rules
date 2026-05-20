@@ -41,5 +41,12 @@ service firebase.storage {
         && request.resource.size < 2 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
+
+    // Inquiry attachments (M11.7). Writes go through the submitInquiry
+    // Cloud Function (Admin SDK). Editors read for admin review.
+    match /inquiries/{inquiryId}/{file=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
