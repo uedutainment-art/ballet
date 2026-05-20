@@ -5,10 +5,10 @@ import Image from "next/image";
 import Script from "next/script";
 import { Flag } from "lucide-react";
 import {
-  COMPANY_GRADIENTS,
   COMPANY_TYPE_LABELS,
   type Performance,
 } from "@/lib/types/performance";
+import { PosterPlaceholder } from "@/components/posters/PosterPlaceholder";
 import { CopyLinkButton } from "@/components/public/CopyLinkButton";
 import { formatDateRange, toDate } from "@/lib/format";
 import { getPerformanceById } from "@/lib/firebase/queries";
@@ -87,7 +87,7 @@ export default async function PerformanceDetailPage({
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 lg:gap-12">
           <Poster performance={p} />
           <InfoGrid performance={p} />
         </div>
@@ -122,29 +122,23 @@ export default async function PerformanceDetailPage({
 }
 
 function Poster({ performance: p }: { performance: Performance }) {
-  const gradient = p.companyType ?
-    COMPANY_GRADIENTS[p.companyType] :
-    COMPANY_GRADIENTS.other;
-  const [gFrom, gTo] = gradient;
   return (
-    <div className="relative rounded-md border border-border overflow-hidden bg-white aspect-[3/4]">
+    <div className="relative rounded-md border border-border overflow-hidden bg-white aspect-[2/3] max-w-sm mx-auto lg:mx-0 lg:max-w-none w-full">
       {p.posterUrl ? (
         <Image
           src={p.posterUrl}
           alt={`${p.title} 포스터`}
           fill
-          sizes="(max-width: 768px) 100vw, 260px"
+          sizes="(max-width: 1024px) 100vw, 300px"
           className="object-cover"
+          priority
         />
       ) : (
-        <div
-          className="absolute inset-0 flex items-center justify-center font-serif text-white text-sm"
-          style={{
-            background: `linear-gradient(135deg, ${gFrom} 0%, ${gTo} 100%)`,
-          }}
-        >
-          {p.companyType ? COMPANY_TYPE_LABELS[p.companyType] : p.company}
-        </div>
+        <PosterPlaceholder
+          title={p.title}
+          dateLabel={p.company}
+          placeholderId={p.id}
+        />
       )}
     </div>
   );

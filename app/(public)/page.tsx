@@ -92,7 +92,7 @@ export default async function Home() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
               {urgent.map((c) => (
                 <CompetitionCard key={c.id} competition={c} />
               ))}
@@ -180,7 +180,7 @@ export default async function Home() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
               {performances.map((p) => (
                 <PerformanceCard key={p.id} performance={p} />
               ))}

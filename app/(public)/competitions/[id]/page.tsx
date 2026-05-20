@@ -5,10 +5,10 @@ import Image from "next/image";
 import Script from "next/script";
 import { Flag } from "lucide-react";
 import {
-  CATEGORY_GRADIENTS,
   CATEGORY_LABELS,
   type Competition,
 } from "@/lib/types/competition";
+import { PosterPlaceholder } from "@/components/posters/PosterPlaceholder";
 import { DDayBadge } from "@/components/public/DDayBadge";
 import { CopyLinkButton } from "@/components/public/CopyLinkButton";
 import { formatDate, formatDateRange, toDate } from "@/lib/format";
@@ -91,7 +91,7 @@ export default async function CompetitionDetailPage({
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 lg:gap-12">
           <Poster competition={c} />
           <InfoGrid competition={c} />
         </div>
@@ -120,26 +120,23 @@ export default async function CompetitionDetailPage({
 }
 
 function Poster({ competition: c }: { competition: Competition }) {
-  const [gFrom, gTo] = CATEGORY_GRADIENTS[c.category];
   return (
-    <div className="relative rounded-md border border-border overflow-hidden bg-white aspect-[3/4]">
+    <div className="relative rounded-md border border-border overflow-hidden bg-white aspect-[2/3] max-w-sm mx-auto lg:mx-0 lg:max-w-none w-full">
       {c.posterUrl ? (
         <Image
           src={c.posterUrl}
           alt={`${c.name} 포스터`}
           fill
-          sizes="(max-width: 768px) 100vw, 260px"
+          sizes="(max-width: 1024px) 100vw, 300px"
           className="object-cover"
+          priority
         />
       ) : (
-        <div
-          className="absolute inset-0 flex items-center justify-center font-serif text-white text-sm"
-          style={{
-            background: `linear-gradient(135deg, ${gFrom} 0%, ${gTo} 100%)`,
-          }}
-        >
-          {CATEGORY_LABELS[c.category]}
-        </div>
+        <PosterPlaceholder
+          title={c.name}
+          dateLabel={c.edition ?? CATEGORY_LABELS[c.category]}
+          placeholderId={c.id}
+        />
       )}
     </div>
   );
