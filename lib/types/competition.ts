@@ -16,6 +16,9 @@ export interface Competition {
   category: CompetitionCategory;
   name: string;
   host: string;
+  // M10: optional pointer to /organizations/{id}. `host` stays denormalized
+  // so existing UI keeps working without a join.
+  hostOrgId?: string;
   edition?: string;
   dateStart: Timestamp;
   dateEnd: Timestamp;

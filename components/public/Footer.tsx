@@ -46,8 +46,19 @@ export function Footer() {
             </li>
           </ul>
         </div>
-        <div className="mt-8 pt-6 border-t border-border text-[11px] text-warm-gray/80">
-          © 2026 K BALLET &amp; CO. · created by 포올
+        <div className="mt-8 pt-6 border-t border-border space-y-2 text-[11px] text-warm-gray/80">
+          <div>© 2026 K BALLET &amp; CO. · created by 포올</div>
+          <div className="leading-relaxed">
+            K BALLET에 표시된 각 기관의 로고와 상표는 해당 기관의 자산입니다.
+            식별·정보 제공 목적으로만 사용되며, 기관에서 삭제를 요청하시면
+            즉시 반영됩니다. 문의:{" "}
+            <a
+              href="mailto:uedutainment@gmail.com"
+              className="hover:text-ink"
+            >
+              uedutainment@gmail.com
+            </a>
+          </div>
         </div>
       </div>
     </footer>

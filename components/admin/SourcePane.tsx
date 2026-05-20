@@ -36,6 +36,11 @@ export type SourcePaneTarget = {
   // Optional YouTube ID — when present the left-side reference shows the
   // embedded player instead of a poster thumbnail. Used by /admin/videos.
   youtubeId?: string;
+  // Optional logo URL — used by /admin/organizations to render the current
+  // logo as the "current reference" thumbnail.
+  logoUrl?: string;
+  // Optional title shown next to the reference thumbnail (org name etc.).
+  primaryLabel?: string;
   accentColorFrom: string; // for fallback gradient
   accentColorTo: string;
   accentLabel: string;
@@ -262,13 +267,18 @@ export function SourcePane({target, onReExtracted}: Props) {
           <div className="space-y-2">
             <Input
               type="url"
-              placeholder="https://example.com/contest"
+              placeholder={
+                target.domain === "organization"
+                  ? "https://example.org (기관 공식 사이트)"
+                  : "https://example.com/contest"
+              }
               value={urlValue}
               onChange={(e) => setUrlValue(e.target.value)}
             />
             <p className="text-[11px] text-warm-gray">
-              콩쿠르 공식 페이지 또는 모집요강 URL을 붙여넣으세요. HTML만
-              지원 (PDF 링크는 PDF 탭에서 직접 업로드해 주세요).
+              {target.domain === "organization"
+                ? "기관 공식 홈페이지 URL을 붙여넣으면 이름·주소·연락처·로고 후보를 추출해요."
+                : "공식 페이지 또는 모집요강 URL을 붙여넣으세요. HTML만 지원 (PDF 링크는 PDF 탭에서 직접 업로드해 주세요)."}
             </p>
           </div>
         ) : (
@@ -379,6 +389,46 @@ function OriginalSource({target}: {target: SourcePaneTarget}) {
         <div className="text-[10px] text-warm-gray text-right">
           다른 자료로 재분석 ↓
         </div>
+      </div>
+    );
+  }
+
+  // Organizations show their logo (or a placeholder) as the current reference.
+  if (target.domain === "organization") {
+    const hasLogo = !!target.logoUrl;
+    return (
+      <div className="flex items-center gap-3 pb-2 border-b border-border">
+        <div className="relative w-14 h-14 rounded-md overflow-hidden border border-border bg-white shrink-0">
+          {hasLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={target.logoUrl!}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain"
+            />
+          ) : (
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(135deg, ${target.accentColorFrom} 0%, ${target.accentColorTo} 100%)`,
+              }}
+            />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-warm-gray">🏛 현재 기관</div>
+          <div className="text-[11px] text-ink mt-0.5 truncate">
+            {target.primaryLabel ?? "이름 미설정"}
+          </div>
+          <div className="text-[10px] text-warm-gray/70 mt-0.5">
+            {hasLogo ? "로고 있음" : "로고 없음"} · {target.accentLabel}
+          </div>
+        </div>
+        <span className="text-[10px] text-warm-gray text-right shrink-0">
+          공식 사이트 URL로
+          <br />
+          AI 추출 ↓
+        </span>
       </div>
     );
   }

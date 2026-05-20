@@ -15,6 +15,8 @@ export const competitionFormSchema = z
       "regional",
     ]),
     host: z.string().min(1, "주최는 필수예요"),
+    // M10: optional org pointer set by OrgCombobox. "" → undefined at write time.
+    hostOrgId: z.string().optional(),
     edition: z.string().optional(),
     dateStart: z.string().min(1, "시작일은 필수예요"),
     dateEnd: z.string().min(1, "종료일은 필수예요"),

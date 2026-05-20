@@ -51,6 +51,7 @@ function videoToForm(v: Video): VideoFormValues {
     relatedCompetitionIdsCsv: (v.relatedCompetitionIds ?? []).join(", "),
     relatedAdmissionIdsCsv: (v.relatedAdmissionIds ?? []).join(", "),
     relatedPerformanceIdsCsv: (v.relatedPerformanceIds ?? []).join(", "),
+    relatedOrgIdsCsv: (v.relatedOrgIds ?? []).join(", "),
     notes: v.notes ?? "",
   };
 }
@@ -74,6 +75,10 @@ function formToPatch(v: VideoFormValues): Record<string, unknown> {
       .map((s) => s.trim())
       .filter(Boolean),
     relatedPerformanceIds: (v.relatedPerformanceIdsCsv ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    relatedOrgIds: (v.relatedOrgIdsCsv ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),

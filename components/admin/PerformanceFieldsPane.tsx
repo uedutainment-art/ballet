@@ -4,6 +4,7 @@ import { useFormContext } from "react-hook-form";
 import { AlertTriangle } from "lucide-react";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { ConfidenceMeter } from "@/components/admin/ConfidenceMeter";
+import { OrgLinkRow } from "@/components/admin/OrgLinkRow";
 import { COMPANY_TYPE_LABELS } from "@/lib/types/performance";
 import type { PerformanceFormValues } from "@/lib/zod/performance";
 import type { AutosaveStatus } from "@/lib/admin/useAutosave";
@@ -80,8 +81,17 @@ export function PerformanceFieldsPane({
           <Input {...register("title")} />
         </Field>
 
-        <Field label="단체" required note={aiFieldNotes?.company} error={errors.company?.message} highlighted={highlight("company")}>
+        <Field label="단체" required note={aiFieldNotes?.company} error={errors.company?.message} highlighted={highlight("company")} className="md:col-span-2">
           <Input {...register("company")} placeholder="예: 국립발레단" />
+          <div className="mt-2">
+            <OrgLinkRow<PerformanceFormValues>
+              label="단체 기관 연결"
+              nameField="company"
+              idField="companyOrgId"
+              typeFilter={["COMPANY", "UNIVERSITY", "ASSOCIATION"]}
+              createAsType="COMPANY"
+            />
+          </div>
         </Field>
 
         <Field label="단체 유형" note={aiFieldNotes?.companyType} error={errors.companyType?.message} highlighted={highlight("companyType")}>
@@ -95,8 +105,17 @@ export function PerformanceFieldsPane({
           </Select>
         </Field>
 
-        <Field label="장소" required note={aiFieldNotes?.venue} error={errors.venue?.message} highlighted={highlight("venue")}>
+        <Field label="장소" required note={aiFieldNotes?.venue} error={errors.venue?.message} highlighted={highlight("venue")} className="md:col-span-2">
           <Input {...register("venue")} placeholder="예: 예술의전당 오페라극장" />
+          <div className="mt-2">
+            <OrgLinkRow<PerformanceFormValues>
+              label="공연장 기관 연결"
+              nameField="venue"
+              idField="venueOrgId"
+              typeFilter={["PERFORMANCE_HALL"]}
+              createAsType="PERFORMANCE_HALL"
+            />
+          </div>
         </Field>
 
         <Field label="러닝타임 (분)" note={aiFieldNotes?.runtime} error={errors.runtime?.message} highlighted={highlight("runtime")}>

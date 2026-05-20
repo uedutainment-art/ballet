@@ -39,6 +39,8 @@ export const videoFormSchema = z.object({
   relatedCompetitionIdsCsv: z.string().optional(),
   relatedAdmissionIdsCsv: z.string().optional(),
   relatedPerformanceIdsCsv: z.string().optional(),
+  // M10: multi-org CSV (orgIds).
+  relatedOrgIdsCsv: z.string().optional(),
   notes: z.string().optional(),
 });
 

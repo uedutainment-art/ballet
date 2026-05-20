@@ -39,6 +39,20 @@ service cloud.firestore {
       allow write: if isEditor();
     }
 
+    // ─── Organizations (M10) ───
+    // PUBLISHED orgs are public; everything else is editor/admin only.
+    // Publishing requires admin (matches competitions/admissions pattern).
+    match /organizations/{id} {
+      allow read: if resource.data.workflowState == 'PUBLISHED' || isEditor();
+      allow create: if isEditor()
+        && request.resource.data.workflowState in ['DRAFT','IN_REVIEW','READY'];
+      allow update: if isEditor()
+        && request.resource.data.workflowState in ['DRAFT','IN_REVIEW','READY','ARCHIVED'];
+      allow update: if isAdmin()
+        && request.resource.data.workflowState == 'PUBLISHED';
+      allow delete: if isAdmin();
+    }
+
     // ─── User reports ───
     match /reports/{id} {
       allow create: if request.auth != null;

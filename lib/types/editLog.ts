@@ -5,7 +5,8 @@ export type EditLogDocType =
   | "competition"
   | "admission"
   | "performance"
-  | "video";
+  | "video"
+  | "organization";
 
 export interface EditLog {
   id: string;

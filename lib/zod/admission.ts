@@ -9,6 +9,8 @@ export const admissionFormSchema = z
       .string()
       .min(1, "학교명은 필수예요")
       .max(120, "학교명은 120자 이하"),
+    // M10: optional org pointer set by OrgCombobox.
+    schoolOrgId: z.string().optional(),
     department: z.string().min(1, "학과는 필수예요"),
     schoolType: z.enum(["middle", "high", "university", "grad"]),
     year: z.number().int().min(2024).max(2099),

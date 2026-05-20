@@ -43,6 +43,12 @@ const items: NavItem[] = [
     visible: () => true,
   },
   {
+    label: "기관 DB",
+    href: "/admin/organizations",
+    enabled: true,
+    visible: () => true,
+  },
+  {
     label: "승인 큐",
     href: "/admin/queue",
     enabled: true,

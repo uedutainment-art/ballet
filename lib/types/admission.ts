@@ -13,6 +13,9 @@ export interface Admission {
   status: ContentStatus;
   schoolType: SchoolType;
   schoolName: string;
+  // M10: optional pointer to /organizations/{id}. `schoolName` stays
+  // denormalized so existing UI keeps working without a join.
+  schoolOrgId?: string;
   department: string;
   year: number;
   capacity?: number;

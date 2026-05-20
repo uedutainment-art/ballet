@@ -14,6 +14,7 @@ import { db } from "@/lib/firebase/client";
 import {
   admissionConverter,
   competitionConverter,
+  organizationConverter,
   performanceConverter,
   videoConverter,
 } from "@/lib/firebase/converters";
@@ -28,11 +29,13 @@ import type {
   VideoLevel,
   VideoSeries,
 } from "@/lib/types/video";
+import type { Organization, OrgType } from "@/lib/types/organization";
 
 const COL = "competitions";
 const ADMISSIONS_COL = "admissions";
 const PERFORMANCES_COL = "performances";
 const VIDEOS_COL = "videos";
+const ORGS_COL = "organizations";
 
 export type ListCompetitionsOptions = {
   limit?: number;
@@ -357,4 +360,204 @@ export async function listVideosBySeries(
   n = 30,
 ): Promise<Video[]> {
   return listPublishedVideos({ series, limit: n });
+}
+
+// ---------- Organizations (M10) ----------
+
+export type ListOrganizationsOptions = {
+  limit?: number;
+  type?: OrgType | OrgType[];
+  region?: string;
+  search?: string;
+};
+
+// Published-and-active organizations only — anything still in DRAFT/IN_REVIEW
+// or marked INACTIVE is hidden from the public side.
+export async function listPublishedOrganizations(
+  opts: ListOrganizationsOptions = {},
+): Promise<Organization[]> {
+  try {
+    const q = query(
+      collection(db, ORGS_COL).withConverter(organizationConverter),
+      where("workflowState", "==", "PUBLISHED"),
+      fbLimit(opts.limit ?? 200),
+    );
+    const snap = await getDocs(q);
+    let docs = snap.docs
+      .map((d) => d.data())
+      .filter((o) => o.status !== "INACTIVE");
+
+    if (opts.type) {
+      const wanted = Array.isArray(opts.type) ? opts.type : [opts.type];
+      docs = docs.filter((o) => wanted.includes(o.type));
+    }
+    if (opts.region) {
+      const needle = opts.region.trim();
+      docs = docs.filter((o) => o.region === needle);
+    }
+    if (opts.search) {
+      const needle = opts.search.trim().toLowerCase();
+      docs = docs.filter(
+        (o) =>
+          o.name.toLowerCase().includes(needle) ||
+          (o.shortName ?? "").toLowerCase().includes(needle) ||
+          (o.englishName ?? "").toLowerCase().includes(needle) ||
+          (o.aliases ?? []).some((a) => a.toLowerCase().includes(needle)),
+      );
+    }
+    docs.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    return docs;
+  } catch (err) {
+    console.error("[queries] listPublishedOrganizations failed:", err);
+    return [];
+  }
+}
+
+export async function getOrganizationById(
+  id: string,
+): Promise<Organization | null> {
+  try {
+    const ref = doc(db, ORGS_COL, id).withConverter(organizationConverter);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`[queries] getOrganizationById(${id}) failed:`, err);
+    return null;
+  }
+}
+
+// Resolve multiple org IDs in one shot. Returns a map keyed by id; missing
+// ids are simply absent. Used to inline org names + logos in detail pages.
+export async function getOrganizationsByIds(
+  ids: string[],
+): Promise<Record<string, Organization>> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  if (unique.length === 0) return {};
+  try {
+    const results = await Promise.all(unique.map((id) => getOrganizationById(id)));
+    const out: Record<string, Organization> = {};
+    for (let i = 0; i < unique.length; i++) {
+      const o = results[i];
+      if (o) out[unique[i]] = o;
+    }
+    return out;
+  } catch (err) {
+    console.error("[queries] getOrganizationsByIds failed:", err);
+    return {};
+  }
+}
+
+// Lookup competitions/admissions/performances/videos that reference an org.
+// Each helper applies the relevant orgId field. Used by /organizations/[id].
+export async function listCompetitionsByHostOrg(
+  orgId: string,
+): Promise<Competition[]> {
+  try {
+    const q = query(
+      collection(db, COL).withConverter(competitionConverter),
+      where("status", "==", "PUBLISHED"),
+      where("hostOrgId", "==", orgId),
+      fbLimit(50),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data());
+  } catch (err) {
+    console.error(`[queries] listCompetitionsByHostOrg(${orgId}) failed:`, err);
+    return [];
+  }
+}
+
+export async function listAdmissionsBySchoolOrg(
+  orgId: string,
+): Promise<Admission[]> {
+  try {
+    const q = query(
+      collection(db, ADMISSIONS_COL).withConverter(admissionConverter),
+      where("status", "==", "PUBLISHED"),
+      where("schoolOrgId", "==", orgId),
+      fbLimit(50),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data());
+  } catch (err) {
+    console.error(`[queries] listAdmissionsBySchoolOrg(${orgId}) failed:`, err);
+    return [];
+  }
+}
+
+export async function listPerformancesByOrg(
+  orgId: string,
+): Promise<Performance[]> {
+  try {
+    // A performance can reference an org as either company or venue. We
+    // can't OR these on Firestore side; run two queries and dedupe.
+    const [byCompany, byVenue] = await Promise.all([
+      getDocs(
+        query(
+          collection(db, PERFORMANCES_COL).withConverter(performanceConverter),
+          where("status", "==", "PUBLISHED"),
+          where("companyOrgId", "==", orgId),
+          fbLimit(50),
+        ),
+      ),
+      getDocs(
+        query(
+          collection(db, PERFORMANCES_COL).withConverter(performanceConverter),
+          where("status", "==", "PUBLISHED"),
+          where("venueOrgId", "==", orgId),
+          fbLimit(50),
+        ),
+      ),
+    ]);
+    const map = new Map<string, Performance>();
+    for (const snap of [...byCompany.docs, ...byVenue.docs]) {
+      const p = snap.data();
+      map.set(p.id, p);
+    }
+    return Array.from(map.values());
+  } catch (err) {
+    console.error(`[queries] listPerformancesByOrg(${orgId}) failed:`, err);
+    return [];
+  }
+}
+
+export async function listVideosByRelatedOrg(
+  orgId: string,
+): Promise<Video[]> {
+  try {
+    const q = query(
+      collection(db, VIDEOS_COL).withConverter(videoConverter),
+      where("status", "==", "PUBLISHED"),
+      where("relatedOrgIds", "array-contains", orgId),
+      fbLimit(50),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data());
+  } catch (err) {
+    console.error(`[queries] listVideosByRelatedOrg(${orgId}) failed:`, err);
+    return [];
+  }
+}
+
+// Lightweight search for the admin OrgCombobox autocomplete. Fetches a small
+// PUBLISHED set and filters client-side — fine while org count stays small.
+export async function searchOrganizationsForCombobox(
+  needle: string,
+  typeFilter?: OrgType | OrgType[],
+  limitTotal = 10,
+): Promise<Organization[]> {
+  const all = await listPublishedOrganizations({
+    limit: 200,
+    type: typeFilter,
+  });
+  const q = needle.trim().toLowerCase();
+  if (!q) return all.slice(0, limitTotal);
+  const matched = all.filter(
+    (o) =>
+      o.name.toLowerCase().includes(q) ||
+      (o.shortName ?? "").toLowerCase().includes(q) ||
+      (o.englishName ?? "").toLowerCase().includes(q) ||
+      (o.aliases ?? []).some((a) => a.toLowerCase().includes(q)),
+  );
+  return matched.slice(0, limitTotal);
 }

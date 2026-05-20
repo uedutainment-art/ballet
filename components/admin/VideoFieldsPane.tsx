@@ -206,6 +206,20 @@ export function VideoFieldsPane({
         </Field>
 
         <Field
+          label="관련 기관 orgId"
+          hint="쉼표로 구분 — 기관 DB의 orgId"
+          note={aiFieldNotes?.relatedOrgIds}
+          error={errors.relatedOrgIdsCsv?.message}
+          className="md:col-span-2"
+          highlighted={highlight("relatedOrgIdsCsv")}
+        >
+          <Input
+            {...register("relatedOrgIdsCsv")}
+            placeholder="예: karts-dance, korea-national-ballet"
+          />
+        </Field>
+
+        <Field
           label="비고"
           note={aiFieldNotes?.notes}
           error={errors.notes?.message}

@@ -4,6 +4,7 @@ import { useFormContext } from "react-hook-form";
 import { AlertTriangle } from "lucide-react";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { ConfidenceMeter } from "@/components/admin/ConfidenceMeter";
+import { OrgLinkRow } from "@/components/admin/OrgLinkRow";
 import { CATEGORY_LABELS } from "@/lib/types/competition";
 import type { CompetitionFormValues } from "@/lib/zod/competition";
 import type { AutosaveStatus } from "@/lib/admin/useAutosave";
@@ -92,8 +93,18 @@ export function FieldsPane({
           </Select>
         </Field>
 
-        <Field label="주최" required note={aiFieldNotes?.host} error={errors.host?.message} highlighted={highlight("host")}>
+        <Field label="주최" required note={aiFieldNotes?.host} error={errors.host?.message} highlighted={highlight("host")} className="md:col-span-2">
           <Input {...register("host")} />
+          <div className="mt-2">
+            <OrgLinkRow<CompetitionFormValues>
+              label="주최 기관 연결"
+              nameField="host"
+              idField="hostOrgId"
+              typeFilter={["ASSOCIATION", "COMPETITION_HOST", "COMPANY", "UNIVERSITY"]}
+              createAsType="COMPETITION_HOST"
+              hint="기관 DB와 연결하면 디렉터리에 노출돼요"
+            />
+          </div>
         </Field>
 
         <Field label="회차" note={aiFieldNotes?.edition} error={errors.edition?.message} highlighted={highlight("edition")}>

@@ -11,7 +11,9 @@
     "seed:superadmin": "tsx scripts/seed-superadmin.ts",
     "seed:admissions": "tsx scripts/seed-admissions.ts",
     "seed:performances": "tsx scripts/seed-performances.ts",
-    "seed:videos": "tsx scripts/seed-videos.ts"
+    "seed:videos": "tsx scripts/seed-videos.ts",
+    "seed:organizations": "tsx scripts/seed-organizations.ts",
+    "backfill:orgs": "tsx scripts/backfill-org-references.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

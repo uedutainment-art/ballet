@@ -9,7 +9,8 @@ export type ReExtractDomain =
   | "competition"
   | "admission"
   | "performance"
-  | "video";
+  | "video"
+  | "organization";
 
 export type ReExtractRequest = {
   docId: string;

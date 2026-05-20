@@ -3,6 +3,7 @@ import * as logger from "firebase-functions/logger";
 import {
   ADMISSION_EXTRACTION_PROMPT,
   COMPETITION_EXTRACTION_PROMPT,
+  ORGANIZATION_EXTRACTION_PROMPT,
   PERFORMANCE_EXTRACTION_PROMPT,
   VIDEO_EXTRACTION_PROMPT,
 } from "./prompts";
@@ -715,6 +716,186 @@ export async function extractVideo(
   logger.info("[extract-video] OK", {
     title: normalized.title,
     series: normalized.series,
+    confidence: normalized.aiConfidence,
+  });
+  return {ok: true, data: normalized, rawText};
+}
+
+// ---------- Organization extraction (M10) ----------
+
+export type OrgType =
+  | "UNIVERSITY"
+  | "HIGH_SCHOOL"
+  | "MIDDLE_SCHOOL"
+  | "ACADEMY"
+  | "ASSOCIATION"
+  | "COMPANY"
+  | "COMPETITION_HOST"
+  | "PERFORMANCE_HALL"
+  | "OTHER";
+
+export type OrganizationExtractionResult = {
+  name: string;
+  shortName: string | null;
+  englishName: string | null;
+  aliases: string[];
+  type: OrgType;
+  websiteUrl: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  region: string | null;
+  description: string | null;
+  establishedYear: number | null;
+  instagramUrl: string | null;
+  youtubeUrl: string | null;
+  facebookUrl: string | null;
+  logoCandidates: string[];
+  tags: string[];
+  aiConfidence: number;
+  aiFieldNotes: Record<string, string>;
+};
+
+export type OrganizationExtractionOutcome =
+  | { ok: true; data: OrganizationExtractionResult; rawText: string }
+  | { ok: false; rawText: string; error: string };
+
+const VALID_ORG_TYPES: OrgType[] = [
+  "UNIVERSITY",
+  "HIGH_SCHOOL",
+  "MIDDLE_SCHOOL",
+  "ACADEMY",
+  "ASSOCIATION",
+  "COMPANY",
+  "COMPETITION_HOST",
+  "PERFORMANCE_HALL",
+  "OTHER",
+];
+
+function asYear(v: unknown): number | null {
+  const n = asInt(v);
+  if (n === null) return null;
+  if (n < 1800 || n > 2099) return null;
+  return n;
+}
+
+function normalizeOrganization(
+  raw: unknown,
+): OrganizationExtractionResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const name = asString(r.name);
+  if (!name) return null;
+
+  const rawType = r.type;
+  const type: OrgType =
+    typeof rawType === "string" &&
+    VALID_ORG_TYPES.includes(rawType as OrgType) ?
+      (rawType as OrgType) :
+      "OTHER";
+
+  // logoCandidates: keep only absolute https URLs that point to image-ish paths
+  // or are reasonably likely to resolve to images. Cap at 5 to bound the UI.
+  const rawCandidates = Array.isArray(r.logoCandidates) ?
+    (r.logoCandidates as unknown[]) :
+    [];
+  const logoCandidates = rawCandidates
+    .filter((c): c is string => typeof c === "string")
+    .map((c) => c.trim())
+    .filter((c) => /^https?:\/\//.test(c))
+    .slice(0, 5);
+
+  return {
+    name,
+    shortName: asString(r.shortName),
+    englishName: asString(r.englishName),
+    aliases: asStringArray(r.aliases),
+    type,
+    websiteUrl: asString(r.websiteUrl),
+    email: asString(r.email),
+    phone: asString(r.phone),
+    address: asString(r.address),
+    region: asString(r.region),
+    description: asString(r.description),
+    establishedYear: asYear(r.establishedYear),
+    instagramUrl: asString(r.instagramUrl),
+    youtubeUrl: asString(r.youtubeUrl),
+    facebookUrl: asString(r.facebookUrl),
+    logoCandidates,
+    tags: asStringArray(r.tags),
+    aiConfidence: asConfidence(r.aiConfidence),
+    aiFieldNotes: asNoteMap(r.aiFieldNotes),
+  };
+}
+
+export async function extractOrganization(
+  input: ExtractionInput,
+  apiKey: string,
+): Promise<OrganizationExtractionOutcome> {
+  if (!input.imageDataUrl && !(input.supplementText?.trim())) {
+    return {
+      ok: false,
+      rawText: "",
+      error: "No input — pass imageDataUrl, supplementText, or both",
+    };
+  }
+
+  const openai = new OpenAI({apiKey});
+  const content: Array<
+    | {type: "text"; text: string}
+    | {type: "image_url"; image_url: {url: string; detail: "high"}}
+  > = [{type: "text", text: ORGANIZATION_EXTRACTION_PROMPT}];
+
+  if (input.imageDataUrl) {
+    content.push({
+      type: "image_url",
+      image_url: {url: input.imageDataUrl, detail: "high"},
+    });
+  }
+  if (input.supplementText && input.supplementText.trim().length > 0) {
+    content.push({
+      type: "text",
+      text: "\n\nSOURCE TEXT:\n\n" + input.supplementText,
+    });
+  }
+
+  let resp;
+  try {
+    resp = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{role: "user", content}],
+      response_format: {type: "json_object"},
+      max_tokens: 1500,
+      temperature: 0.1,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[extract-organization] OpenAI call failed", {error: msg});
+    return {ok: false, rawText: "", error: msg};
+  }
+
+  const rawText = resp.choices[0]?.message?.content ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {ok: false, rawText, error: "JSON parse failed"};
+  }
+
+  const normalized = normalizeOrganization(parsed);
+  if (!normalized) {
+    return {
+      ok: false,
+      rawText,
+      error: "Missing required field (name)",
+    };
+  }
+
+  logger.info("[extract-organization] OK", {
+    name: normalized.name,
+    type: normalized.type,
+    candidates: normalized.logoCandidates.length,
     confidence: normalized.aiConfidence,
   });
   return {ok: true, data: normalized, rawText};

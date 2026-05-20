@@ -14,6 +14,10 @@ export interface Performance {
   title: string;
   company: string;
   companyType?: CompanyType;
+  // M10: optional pointers to /organizations/{id}. `company` and `venue`
+  // stay denormalized so existing UI keeps working without a join.
+  companyOrgId?: string;
+  venueOrgId?: string;
   venue: string;
   dateStart: Timestamp;
   dateEnd: Timestamp;

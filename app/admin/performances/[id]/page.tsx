@@ -58,6 +58,8 @@ function performanceToForm(p: Performance): PerformanceFormValues {
   return {
     title: p.title ?? "",
     company: p.company ?? "",
+    companyOrgId: p.companyOrgId ?? "",
+    venueOrgId: p.venueOrgId ?? "",
     companyType: p.companyType,
     venue: p.venue ?? "",
     dateStart: tsToInputDate(p.dateStart),
@@ -109,6 +111,11 @@ function formToPatch(v: PerformanceFormValues): Record<string, unknown> {
   if (v.runtime !== undefined && !Number.isNaN(v.runtime)) {
     patch.runtime = v.runtime;
   }
+  // M10: only write orgIds if linked.
+  const cOrg = (v.companyOrgId ?? "").trim();
+  if (cOrg) patch.companyOrgId = cOrg;
+  const vOrg = (v.venueOrgId ?? "").trim();
+  if (vOrg) patch.venueOrgId = vOrg;
   return patch;
 }
 

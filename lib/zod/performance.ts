@@ -11,6 +11,9 @@ export const performanceFormSchema = z
   .object({
     title: z.string().min(1, "공연명은 필수예요").max(140),
     company: z.string().min(1, "단체명은 필수예요"),
+    // M10: optional org pointers set by OrgCombobox.
+    companyOrgId: z.string().optional(),
+    venueOrgId: z.string().optional(),
     companyType: z
       .enum(["national", "private", "university", "foreign", "other"])
       .optional(),

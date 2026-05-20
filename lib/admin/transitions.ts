@@ -16,6 +16,9 @@ type Ctx = {
   fromStatus: ContentStatus;
   collection: string; // e.g. "competitions" | "admissions"
   docType: EditLogDocType;
+  // Most collections store the workflow under "status". Organizations use
+  // "workflowState" because they also have a soft ACTIVE/INACTIVE flag.
+  statusField?: "status" | "workflowState";
 };
 
 async function transition(
@@ -25,9 +28,10 @@ async function transition(
   toStatus: ContentStatus,
   extraChangedFields: string[] = [],
 ) {
+  const statusField = ctx.statusField ?? "status";
   await updateDoc(doc(db, ctx.collection, ctx.id), {
     ...patch,
-    status: toStatus,
+    [statusField]: toStatus,
     lastUpdatedAt: serverTimestamp(),
   });
   await recordEdit({
@@ -38,7 +42,7 @@ async function transition(
     userDisplayName: actor.displayName,
     fromStatus: ctx.fromStatus,
     toStatus,
-    changedFields: ["status", ...extraChangedFields],
+    changedFields: [statusField, ...extraChangedFields],
   });
 }
 

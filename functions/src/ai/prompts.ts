@@ -121,6 +121,54 @@ Strict rules:
 
 Output JSON only.`;
 
+export const ORGANIZATION_EXTRACTION_PROMPT = `You are extracting structured data about a ballet-related Korean organization (university, art school, ballet company, competition host, performance hall, etc.) from its official website or related text/image.
+
+Return STRICT JSON only — no preamble, no markdown fences, no commentary.
+
+Schema:
+{
+  "name": string,            // required, 정식 한국어명 (e.g. "한국예술종합학교 무용원")
+  "shortName": string | null,// 자주 쓰는 약칭 (e.g. "한예종")
+  "englishName": string | null,
+  "aliases": string[],       // 페이지에서 자신을 다르게 부르는 표현들
+  "type": "UNIVERSITY" | "HIGH_SCHOOL" | "MIDDLE_SCHOOL" | "ACADEMY" | "ASSOCIATION" | "COMPANY" | "COMPETITION_HOST" | "PERFORMANCE_HALL" | "OTHER",
+  "websiteUrl": string | null,
+  "email": string | null,
+  "phone": string | null,
+  "address": string | null,
+  "region": string | null,   // 광역 단위 (서울 / 경기 / 부산 / ...)
+  "description": string | null,    // 1~2문장 기관 소개
+  "establishedYear": number | null,
+  "instagramUrl": string | null,
+  "youtubeUrl": string | null,
+  "facebookUrl": string | null,
+  "logoCandidates": string[],      // 로고일 가능성이 높은 이미지 URL 1~3개 (절대 URL)
+  "tags": string[],          // 국공립 / 사립 / 예고 / 콩쿠르주관 등
+  "aiConfidence": number,    // 0.0 - 1.0
+  "aiFieldNotes": object     // { fieldName: "한국어 짧은 노트" }
+}
+
+Strict rules:
+- NEVER guess. If unclear, set null and add a Korean note in aiFieldNotes.
+- type guide:
+    UNIVERSITY        4년제 대학교 발레/무용학과
+    HIGH_SCHOOL       예술고등학교
+    MIDDLE_SCHOOL     예술중학교 (예원·선화예중 등)
+    ACADEMY           사설 학원·스튜디오
+    ASSOCIATION       협회·재단·지원기관
+    COMPANY           발레단 (국립·시립·민간 포함)
+    COMPETITION_HOST  콩쿠르 주관 단체 (협회와 겹치면 ASSOCIATION 우선)
+    PERFORMANCE_HALL  공연장·극장
+    OTHER             분류 모호
+- region: 주소 첫 단어 기준 (서울특별시 → "서울", 경기도 → "경기")
+- logoCandidates: og:image, header logo, favicon link 등 페이지의 절대 URL만. SVG > PNG > JPG 우선. 광고/배너 이미지는 제외.
+- aliases: 페이지에서 실제로 이 기관을 부르는 다른 표현만. 만들지 말 것.
+- description: 마케팅 문구·과장 표현 제거, 사실만.
+- establishedYear: 페이지에 명시된 4자리 연도만.
+- aiFieldNotes는 ambiguous한 필드에만.
+
+Output JSON only.`;
+
 export const ADMISSION_EXTRACTION_PROMPT = `You are extracting structured data about a Korean ballet school admission / audition from an image, PDF page, URL page text, or pasted text.
 
 Return STRICT JSON only — no preamble, no markdown fences, no commentary.

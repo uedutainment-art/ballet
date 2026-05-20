@@ -4,6 +4,7 @@ import { useFormContext } from "react-hook-form";
 import { AlertTriangle } from "lucide-react";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { ConfidenceMeter } from "@/components/admin/ConfidenceMeter";
+import { OrgLinkRow } from "@/components/admin/OrgLinkRow";
 import {
   CSAT_LABELS,
   SCHOOL_TYPE_LABELS,
@@ -73,8 +74,18 @@ export function AdmissionFieldsPane({
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field label="학교명" required note={aiFieldNotes?.schoolName} error={errors.schoolName?.message} highlighted={highlight("schoolName")}>
+        <Field label="학교명" required note={aiFieldNotes?.schoolName} error={errors.schoolName?.message} highlighted={highlight("schoolName")} className="md:col-span-2">
           <Input {...register("schoolName")} />
+          <div className="mt-2">
+            <OrgLinkRow<AdmissionFormValues>
+              label="학교 기관 연결"
+              nameField="schoolName"
+              idField="schoolOrgId"
+              typeFilter={["UNIVERSITY", "HIGH_SCHOOL", "MIDDLE_SCHOOL"]}
+              createAsType="UNIVERSITY"
+              hint="기관 DB 연결 시 학교 상세 페이지에 노출돼요"
+            />
+          </div>
         </Field>
 
         <Field label="학과" required note={aiFieldNotes?.department} error={errors.department?.message} highlighted={highlight("department")}>

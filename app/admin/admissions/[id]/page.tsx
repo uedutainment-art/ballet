@@ -58,6 +58,7 @@ function inputDateToTs(s: string | undefined): Timestamp | undefined {
 function admissionToForm(a: Admission): AdmissionFormValues {
   return {
     schoolName: a.schoolName ?? "",
+    schoolOrgId: a.schoolOrgId ?? "",
     department: a.department ?? "",
     schoolType: a.schoolType,
     year: a.year,
@@ -112,6 +113,9 @@ function formToPatch(v: AdmissionFormValues): Record<string, unknown> {
       Number(v.capacity) :
       v.capacity;
   }
+  // M10: write schoolOrgId only when present.
+  const orgId = (v.schoolOrgId ?? "").trim();
+  if (orgId) patch.schoolOrgId = orgId;
   return patch;
 }
 

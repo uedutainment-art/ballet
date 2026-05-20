@@ -29,6 +29,9 @@ export interface Video {
   relatedCompetitionIds: string[];
   relatedAdmissionIds: string[];
   relatedPerformanceIds: string[];
+  // M10: optional pointers to /organizations/{id}. A single video can
+  // reference multiple orgs (e.g. an interview at 한예종 about KIBC).
+  relatedOrgIds?: string[];
   viewCount?: number;
   // Pipeline meta — mirrors other domains.
   source?: "pull" | "push" | "manual";

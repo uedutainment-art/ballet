@@ -5,26 +5,22 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  doc,
-  serverTimestamp,
-  Timestamp,
-  updateDoc,
-} from "firebase/firestore";
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { getCompetitionById } from "@/lib/firebase/queries";
+import { getOrganizationById } from "@/lib/firebase/queries";
 import { recordEdit } from "@/lib/firebase/editLogs";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { FieldsPane } from "@/components/admin/FieldsPane";
+import { OrgFieldsPane } from "@/components/admin/OrgFieldsPane";
+import { OrgLogoSection } from "@/components/admin/OrgLogoSection";
 import { SourcePane } from "@/components/admin/SourcePane";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusTransitionBar } from "@/components/admin/StatusTransitionBar";
 import { useAutosave } from "@/lib/admin/useAutosave";
 import { useShortcuts } from "@/lib/admin/useShortcuts";
 import {
-  competitionFormSchema,
-  type CompetitionFormValues,
-} from "@/lib/zod/competition";
+  organizationFormSchema,
+  type OrganizationFormValues,
+} from "@/lib/zod/organization";
 import {
   transitionToArchived,
   transitionToHold,
@@ -34,129 +30,111 @@ import {
 } from "@/lib/admin/transitions";
 import { isAdminOrAbove } from "@/lib/types/user";
 import {
-  CATEGORY_GRADIENTS,
-  CATEGORY_LABELS,
-  type Competition,
-} from "@/lib/types/competition";
+  ORG_TYPE_COLORS,
+  ORG_TYPE_LABELS,
+  type Organization,
+} from "@/lib/types/organization";
 import type { ContentStatus } from "@/lib/types/status";
 
-// ---------- Conversion helpers ----------
-
-function tsToInputDate(t?: Timestamp): string {
-  if (!t) return "";
-  const d = t.toDate();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function inputDateToTs(s: string | undefined): Timestamp | undefined {
-  if (!s) return undefined;
-  const [y, m, d] = s.split("-").map(Number);
-  if (!y || !m || !d) return undefined;
-  return Timestamp.fromDate(new Date(y, m - 1, d));
-}
-
-function competitionToForm(c: Competition): CompetitionFormValues {
+function orgToForm(o: Organization): OrganizationFormValues {
   return {
-    name: c.name ?? "",
-    category: c.category,
-    host: c.host ?? "",
-    hostOrgId: c.hostOrgId ?? "",
-    edition: c.edition ?? "",
-    dateStart: tsToInputDate(c.dateStart),
-    dateEnd: tsToInputDate(c.dateEnd),
-    registrationStart: tsToInputDate(c.registrationStart),
-    registrationEnd: tsToInputDate(c.registrationEnd),
-    venue: c.venue ?? "",
-    sectionsCsv: (c.sections ?? []).join(", "),
-    ageGroupsCsv: (c.ageGroups ?? []).join(", "),
-    fee: c.fee ?? "",
-    awards: c.awards ?? "",
-    officialUrl: c.officialUrl ?? "",
-    registerUrl: c.registerUrl ?? "",
-    posterUrl: c.posterUrl ?? "",
-    notes: c.notes ?? "",
+    name: o.name ?? "",
+    shortName: o.shortName ?? "",
+    englishName: o.englishName ?? "",
+    aliasesCsv: (o.aliases ?? []).join(", "),
+    type: o.type,
+    websiteUrl: o.websiteUrl ?? "",
+    email: o.email ?? "",
+    phone: o.phone ?? "",
+    address: o.address ?? "",
+    region: o.region ?? "",
+    description: o.description ?? "",
+    establishedYear: o.establishedYear,
+    instagramUrl: o.socialLinks?.instagram ?? "",
+    youtubeUrl: o.socialLinks?.youtube ?? "",
+    facebookUrl: o.socialLinks?.facebook ?? "",
+    tagsCsv: (o.tags ?? []).join(", "),
+    status: o.status,
+    notes: o.notes ?? "",
   };
 }
 
-function formToPatch(v: CompetitionFormValues): Record<string, unknown> {
+function formToPatch(v: OrganizationFormValues): Record<string, unknown> {
   const patch: Record<string, unknown> = {
     name: v.name,
-    category: v.category,
-    host: v.host,
-    venue: v.venue,
-    officialUrl: v.officialUrl,
-    sections: (v.sectionsCsv ?? "")
+    type: v.type,
+    status: v.status,
+    aliases: (v.aliasesCsv ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
-    ageGroups: (v.ageGroupsCsv ?? "")
+    tags: (v.tagsCsv ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
-    edition: v.edition ?? "",
-    fee: v.fee ?? "",
-    awards: v.awards ?? "",
-    registerUrl: v.registerUrl ?? "",
-    posterUrl: v.posterUrl ?? "",
+    shortName: v.shortName ?? "",
+    englishName: v.englishName ?? "",
+    websiteUrl: v.websiteUrl ?? "",
+    email: v.email ?? "",
+    phone: v.phone ?? "",
+    address: v.address ?? "",
+    region: v.region ?? "",
+    description: v.description ?? "",
     notes: v.notes ?? "",
   };
-  const dateStart = inputDateToTs(v.dateStart);
-  const dateEnd = inputDateToTs(v.dateEnd);
-  const regStart = inputDateToTs(v.registrationStart);
-  const regEnd = inputDateToTs(v.registrationEnd);
-  if (dateStart) patch.dateStart = dateStart;
-  if (dateEnd) patch.dateEnd = dateEnd;
-  if (regStart) patch.registrationStart = regStart;
-  if (regEnd) patch.registrationEnd = regEnd;
-  // M10: only write hostOrgId if the operator picked an org. Empty string
-  // means they cleared the link — we leave the field absent.
-  const orgId = (v.hostOrgId ?? "").trim();
-  if (orgId) patch.hostOrgId = orgId;
+  if (v.establishedYear !== undefined && !Number.isNaN(v.establishedYear)) {
+    patch.establishedYear = v.establishedYear;
+  }
+  // socialLinks nested object — strip empty.
+  const social: Record<string, string> = {};
+  if (v.instagramUrl) social.instagram = v.instagramUrl;
+  if (v.youtubeUrl) social.youtube = v.youtubeUrl;
+  if (v.facebookUrl) social.facebook = v.facebookUrl;
+  patch.socialLinks = social;
   return patch;
 }
 
 function diffKeys(
-  before: CompetitionFormValues,
-  after: CompetitionFormValues,
+  before: OrganizationFormValues,
+  after: OrganizationFormValues,
 ): string[] {
-  const keys = Object.keys(after) as Array<keyof CompetitionFormValues>;
+  const keys = Object.keys(after) as Array<keyof OrganizationFormValues>;
   return keys.filter((k) => before[k] !== after[k]);
 }
 
-// ---------- Page ----------
-
-export default function EditorPage() {
+export default function OrgEditorPage() {
   const params = useParams() as { id: string };
   const router = useRouter();
   const { user, userDoc } = useAuth();
 
-  const [competition, setCompetition] = useState<Competition | null>(null);
+  const [org, setOrg] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  // Fields just updated by a re-extract; rendered with a halo for ~1.5s.
   const [recentlyUpdated, setRecentlyUpdated] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // logoCandidates is a transient extraction artifact — captured from the
+  // most recent AI re-extract; not stored on the org doc itself.
+  const [logoCandidates, setLogoCandidates] = useState<string[]>([]);
 
-  const methods = useForm<CompetitionFormValues>({
-    resolver: zodResolver(competitionFormSchema),
+  const methods = useForm<OrganizationFormValues>({
+    resolver: zodResolver(organizationFormSchema),
     defaultValues: undefined,
     mode: "onChange",
   });
 
-  // Snapshot of the last persisted values — used to compute changed fields.
   const [lastSavedValues, setLastSavedValues] =
-    useState<CompetitionFormValues | null>(null);
+    useState<OrganizationFormValues | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const c = await getCompetitionById(params.id);
+      const o = await getOrganizationById(params.id);
       if (cancelled) return;
-      setCompetition(c);
-      if (c) {
-        const formValues = competitionToForm(c);
+      setOrg(o);
+      if (o) {
+        const formValues = orgToForm(o);
         methods.reset(formValues);
         setLastSavedValues(formValues);
       }
@@ -165,7 +143,6 @@ export default function EditorPage() {
     return () => {
       cancelled = true;
     };
-    // methods is stable; reset is fine to call here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
@@ -183,10 +160,8 @@ export default function EditorPage() {
     setTimeout(() => setToast(null), 2000);
   }, []);
 
-  // ---------- Save (used by both autosave and ⌘S) ----------
-
   const save = useCallback(async (): Promise<void> => {
-    if (!competition) return;
+    if (!org) return;
     const ok = await methods.trigger();
     if (!ok) {
       showToast("필수 항목을 확인해 주세요");
@@ -195,33 +170,29 @@ export default function EditorPage() {
     const values = methods.getValues();
     const patch = formToPatch(values);
     patch.lastUpdatedAt = serverTimestamp();
-    await updateDoc(doc(db, "competitions", competition.id), patch);
+    patch.updatedAt = serverTimestamp();
+    await updateDoc(doc(db, "organizations", org.id), patch);
 
-    // Log only the fields that actually changed since last save.
     const changed = lastSavedValues
       ? diffKeys(lastSavedValues, values)
       : Object.keys(values);
     if (changed.length > 0 && user?.uid) {
       await recordEdit({
-        docRef: `competitions/${competition.id}`,
-        docType: "competition",
-        docTitle: values.name || competition.name,
+        docRef: `organizations/${org.id}`,
+        docType: "organization",
+        docTitle: values.name || org.name,
         userId: actor.uid,
         userDisplayName: actor.displayName,
-        fromStatus: competition.status,
-        toStatus: competition.status,
+        fromStatus: org.workflowState,
+        toStatus: org.workflowState,
         changedFields: changed,
       });
     }
 
     setLastSavedValues(values);
     methods.reset(values, { keepDirty: false });
-  }, [competition, methods, lastSavedValues, actor, showToast, user?.uid]);
+  }, [org, methods, lastSavedValues, actor, showToast, user?.uid]);
 
-  // ---------- Autosave wiring ----------
-
-  // Subscribe to all values for the change marker. Cheap enough for ~16
-  // fields; switch to per-field subscriptions if the form grows.
   const watched = methods.watch();
   const changeMarker = JSON.stringify(watched);
   const dirty = methods.formState.isDirty;
@@ -233,12 +204,10 @@ export default function EditorPage() {
       try {
         await save();
       } catch {
-        // swallowed — useAutosave records the error
+        // swallowed
       }
     },
   });
-
-  // ---------- Status transitions ----------
 
   const runTransition = useCallback(
     async (
@@ -249,27 +218,28 @@ export default function EditorPage() {
           docTitle: string;
           fromStatus: ContentStatus;
           collection: string;
-          docType: "competition";
+          docType: "organization";
+          statusField?: "status" | "workflowState";
         },
         actor: { uid: string; displayName: string },
       ) => Promise<void>,
     ) => {
-      if (!competition || !user?.uid) return;
+      if (!org || !user?.uid) return;
       setBusy(true);
       try {
         await fn(
           {
-            id: competition.id,
-            docTitle: methods.getValues("name") || competition.name,
-            fromStatus: competition.status,
-            collection: "competitions",
-            docType: "competition",
+            id: org.id,
+            docTitle: methods.getValues("name") || org.name,
+            fromStatus: org.workflowState,
+            collection: "organizations",
+            docType: "organization",
+            statusField: "workflowState",
           },
           actor,
         );
-        // Refetch to update local status badge / available transitions.
-        const fresh = await getCompetitionById(competition.id);
-        if (fresh) setCompetition(fresh);
+        const fresh = await getOrganizationById(org.id);
+        if (fresh) setOrg(fresh);
         showToast(label);
       } catch (err) {
         console.error(err);
@@ -278,47 +248,55 @@ export default function EditorPage() {
         setBusy(false);
       }
     },
-    [competition, user?.uid, actor, methods, showToast],
+    [org, user?.uid, actor, methods, showToast],
   );
 
   const onReady = useCallback(async () => {
-    if (!competition) return;
-    if (competition.status === "DRAFT") {
+    if (!org) return;
+    if (org.workflowState === "DRAFT" || org.workflowState === "IN_REVIEW") {
       await runTransition("READY로 넘김", transitionToReady);
-    } else if (competition.status === "IN_REVIEW") {
-      await runTransition("READY로 넘김", transitionToReady);
-    } else if (competition.status === "READY") {
+    } else if (org.workflowState === "READY") {
       await runTransition("공개됐어요", transitionToPublished);
     }
-  }, [competition, runTransition]);
+  }, [org, runTransition]);
 
   const onPublish = useCallback(
     () => runTransition("공개됐어요", transitionToPublished),
     [runTransition],
   );
-
   const onHold = useCallback(
     () => runTransition("보류로 전환했어요", transitionToHold),
     [runTransition],
   );
-
   const onArchive = useCallback(
     () => runTransition("보관함으로 옮겼어요", transitionToArchived),
     [runTransition],
   );
 
-  // ---------- Re-extract callback (from SourcePane) ----------
+  // Auto-move DRAFT → IN_REVIEW on first edit (mirrors competitions/admissions).
+  useEffect(() => {
+    if (!org || org.workflowState !== "DRAFT" || !dirty || !user?.uid) return;
+    void runTransition("검수 시작", transitionToInReview);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org?.workflowState, dirty]);
 
   const onReExtracted = useCallback(
-    async (res: { fieldsUpdated: string[]; confidence: number }) => {
-      if (!competition) return;
-      // The Cloud Function already wrote to Firestore. Refetch + reset form.
-      const fresh = await getCompetitionById(competition.id);
+    async (res: {
+      fieldsUpdated: string[];
+      confidence: number;
+      // The Cloud Function adds an extra optional field for orgs.
+      logoCandidates?: string[];
+    }) => {
+      if (!org) return;
+      const fresh = await getOrganizationById(org.id);
       if (fresh) {
-        setCompetition(fresh);
-        const values = competitionToForm(fresh);
+        setOrg(fresh);
+        const values = orgToForm(fresh);
         methods.reset(values);
         setLastSavedValues(values);
+      }
+      if (Array.isArray(res.logoCandidates) && res.logoCandidates.length > 0) {
+        setLogoCandidates(res.logoCandidates);
       }
       if (res.fieldsUpdated.length > 0) {
         setRecentlyUpdated(new Set(res.fieldsUpdated));
@@ -326,21 +304,15 @@ export default function EditorPage() {
         showToast(
           `${res.fieldsUpdated.length}개 필드 갱신됨 · 신뢰도 ${Math.round(res.confidence * 100)}%`,
         );
+      } else if (
+        Array.isArray(res.logoCandidates) &&
+        res.logoCandidates.length > 0
+      ) {
+        showToast(`로고 후보 ${res.logoCandidates.length}개 발견됨`);
       }
     },
-    [competition, methods, showToast],
+    [org, methods, showToast],
   );
-
-  // Move DRAFT → IN_REVIEW automatically on first edit.
-  useEffect(() => {
-    if (!competition || competition.status !== "DRAFT" || !dirty || !user?.uid)
-      return;
-    void runTransition("검수 시작", transitionToInReview);
-    // Only fire once per mount + per dirty flip.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competition?.status, dirty]);
-
-  // ---------- Shortcuts ----------
 
   useShortcuts({
     onSave: () => {
@@ -350,43 +322,52 @@ export default function EditorPage() {
     onHold,
   });
 
-  // ---------- Render ----------
-
   if (loading) {
     return <div className="text-sm text-warm-gray">불러오는 중…</div>;
   }
-  if (!competition) {
+  if (!org) {
     return (
       <div className="space-y-3">
         <div className="text-sm text-warm-gray">찾을 수 없어요</div>
         <Link
-          href="/admin/competitions"
+          href="/admin/organizations"
           className="text-xs text-brand hover:underline"
         >
-          ← 검수 큐로
+          ← 목록으로
         </Link>
       </div>
     );
   }
 
+  const accentColor = ORG_TYPE_COLORS[org.type];
+
   return (
     <FormProvider {...methods}>
       <div className="space-y-4 relative pb-4">
         <nav className="text-xs text-warm-gray">
-          <Link href="/admin/competitions" className="hover:text-ink">
-            콩쿠르 검수
+          <Link href="/admin/organizations" className="hover:text-ink">
+            기관 데이터베이스
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-ink">{competition.name}</span>
+          <span className="text-ink">{org.name}</span>
         </nav>
 
         <header className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-serif text-ink">{competition.name}</h1>
-          <StatusBadge status={competition.status} />
+          <h1 className="text-xl font-serif text-ink">{org.name}</h1>
+          <StatusBadge status={org.workflowState} />
+          <span className="text-xs text-warm-gray">
+            {ORG_TYPE_LABELS[org.type]}
+            {org.region ? ` · ${org.region}` : ""}
+          </span>
+          {org.status === "INACTIVE" ? (
+            <span className="text-[10px] tracking-wider text-warm-gray/60 uppercase">
+              비활성
+            </span>
+          ) : null}
           <div className="flex-1" />
           <button
             type="button"
-            onClick={() => router.push("/admin/competitions")}
+            onClick={() => router.push("/admin/organizations")}
             className="text-xs text-warm-gray hover:text-ink"
           >
             ← 목록으로
@@ -396,26 +377,40 @@ export default function EditorPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
           <SourcePane
             target={{
-              id: competition.id,
-              domain: "competition",
-              posterUrl: competition.posterUrl,
-              officialUrl: competition.officialUrl,
-              accentColorFrom: CATEGORY_GRADIENTS[competition.category][0],
-              accentColorTo: CATEGORY_GRADIENTS[competition.category][1],
-              accentLabel: CATEGORY_LABELS[competition.category],
+              id: org.id,
+              domain: "organization",
+              logoUrl: org.logoUrl,
+              primaryLabel: org.name,
+              accentColorFrom: accentColor,
+              accentColorTo: accentColor,
+              accentLabel: ORG_TYPE_LABELS[org.type],
             }}
             onReExtracted={onReExtracted}
           />
-          <FieldsPane
-            aiConfidence={competition.aiConfidence}
-            aiFieldNotes={competition.aiFieldNotes}
+          <OrgFieldsPane
+            aiConfidence={org.aiConfidence}
+            aiFieldNotes={org.aiFieldNotes}
             autosave={autosaveStatus}
             recentlyUpdated={recentlyUpdated}
+            logoSection={
+              <OrgLogoSection
+                orgId={org.id}
+                orgName={org.name}
+                currentLogoUrl={org.logoUrl}
+                candidates={logoCandidates}
+                onLogoUpdated={(newUrl) => {
+                  setOrg((prev) =>
+                    prev ? { ...prev, logoUrl: newUrl ?? undefined } : prev,
+                  );
+                  if (newUrl) showToast("로고가 저장됐어요");
+                }}
+              />
+            }
           />
         </div>
 
         <StatusTransitionBar
-          status={competition.status}
+          status={org.workflowState}
           dirty={dirty}
           canPublish={canPublish}
           busy={busy}

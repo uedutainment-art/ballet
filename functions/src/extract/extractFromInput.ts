@@ -6,10 +6,12 @@ import {FieldValue, getFirestore, Timestamp} from "firebase-admin/firestore";
 import {
   extractAdmission,
   extractCompetition,
+  extractOrganization,
   extractPerformance,
   extractVideo,
   type AdmissionExtractionResult,
   type ExtractionResult,
+  type OrganizationExtractionResult,
   type PerformanceExtractionResult,
   type VideoExtractionResult,
 } from "../ai/extract";
@@ -23,7 +25,12 @@ const OPENAI_KEY = defineSecret("OPENAI_API_KEY");
 
 type InputMode = "image" | "pdf" | "url" | "text";
 type ApplyMode = "overwrite" | "fill_empty" | "higher_confidence";
-type Domain = "competition" | "admission" | "performance" | "video";
+type Domain =
+  | "competition"
+  | "admission"
+  | "performance"
+  | "video"
+  | "organization";
 
 type CallRequest = {
   docId: string;
@@ -42,6 +49,9 @@ type CallResponse = {
   fieldsUpdated: string[];
   confidence: number;
   fieldNotes: Record<string, string>;
+  // Organizations also return AI-suggested logo URLs the editor picks from.
+  // Not stored on the doc; surfaces via the re-extract callable response.
+  logoCandidates?: string[];
 };
 
 // Re-extractable fields per domain. Everything else (id, status, source
@@ -110,6 +120,22 @@ const EXTRACTABLE_FIELDS_BY_DOMAIN: Record<Domain, readonly string[]> = {
     "durationSeconds",
     "host",
   ],
+  organization: [
+    "name",
+    "shortName",
+    "englishName",
+    "aliases",
+    "type",
+    "websiteUrl",
+    "email",
+    "phone",
+    "address",
+    "region",
+    "description",
+    "establishedYear",
+    "tags",
+    // socialLinks handled specially below — flattened from instagram/youtube/facebook.
+  ],
 };
 
 const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
@@ -128,6 +154,7 @@ const DATE_FIELDS_BY_DOMAIN: Record<Domain, Set<string>> = {
   ]),
   performance: new Set(["dateStart", "dateEnd"]),
   video: new Set<string>(), // no date fields
+  organization: new Set<string>(), // no date fields
 };
 
 const COLLECTION_BY_DOMAIN: Record<Domain, string> = {
@@ -135,6 +162,7 @@ const COLLECTION_BY_DOMAIN: Record<Domain, string> = {
   admission: "admissions",
   performance: "performances",
   video: "videos",
+  organization: "organizations",
 };
 
 function isEmptyValue(v: unknown): boolean {
@@ -171,7 +199,8 @@ function mergeWithMode(
     | ExtractionResult
     | AdmissionExtractionResult
     | PerformanceExtractionResult
-    | VideoExtractionResult,
+    | VideoExtractionResult
+    | OrganizationExtractionResult,
   applyMode: ApplyMode,
   domain: Domain,
 ): {patch: Record<string, unknown>; changedFields: string[]} {
@@ -208,6 +237,34 @@ function mergeWithMode(
 
     patch[field] = newValue;
     changedFields.push(field);
+  }
+
+  // Organizations: flatten instagram/youtube/facebook into a socialLinks map
+  // so the editor's read shape matches the doc shape.
+  if (domain === "organization") {
+    const orgExtracted = extracted as OrganizationExtractionResult;
+    const existingSocial =
+      (existing.socialLinks as Record<string, string> | undefined) ?? {};
+    const next: Record<string, string> = {...existingSocial};
+    const flat = {
+      instagram: orgExtracted.instagramUrl,
+      youtube: orgExtracted.youtubeUrl,
+      facebook: orgExtracted.facebookUrl,
+    };
+    let socialChanged = false;
+    for (const [key, val] of Object.entries(flat)) {
+      if (!val) continue;
+      if (effective === "fill_empty" && next[key]) continue;
+      if (next[key] === val) continue;
+      next[key] = val;
+      socialChanged = true;
+    }
+    if (socialChanged) {
+      patch.socialLinks = next;
+      if (!changedFields.includes("socialLinks")) {
+        changedFields.push("socialLinks");
+      }
+    }
   }
 
   if (changedFields.length > 0) {
@@ -250,6 +307,15 @@ function buildContextLine(
       "video; extract metadata only, do not invent.\n\n"
     );
   }
+  if (domain === "organization") {
+    return (
+      `Existing organization record being updated: "${existing.name ?? ""}" — ` +
+      `type "${existing.type ?? ""}", website "${existing.websiteUrl ?? ""}". ` +
+      "The new source below is the official site (or supporting text) for " +
+      "the SAME organization; extract identity, contact, and logo " +
+      "candidates only. Do not invent.\n\n"
+    );
+  }
   return (
     `Existing record being updated: "${existing.name ?? ""}" — host "${existing.host ?? ""}". ` +
     "The new source below describes the SAME event; extract the same fields, " +
@@ -270,6 +336,7 @@ function docTitleFor(
   if (domain === "performance" || domain === "video") {
     return (data.title as string) || fallback;
   }
+  // competition + organization both use `name`.
   return (data.name as string) || fallback;
 }
 
@@ -304,7 +371,8 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
       domain !== "competition" &&
       domain !== "admission" &&
       domain !== "performance" &&
-      domain !== "video"
+      domain !== "video" &&
+      domain !== "organization"
     ) {
       throw new HttpsError("invalid-argument", `Unknown domain: ${domain}`);
     }
@@ -324,10 +392,13 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
     const docRef = db.collection(collection).doc(docId);
     const docSnap = await docRef.get();
     if (!docSnap.exists) {
-      throw new HttpsError(
-        "not-found",
-        domain === "admission" ? "입시 정보를 찾을 수 없어요" : "대회를 찾을 수 없어요",
-      );
+      const msg =
+        domain === "admission" ? "입시 정보를 찾을 수 없어요" :
+          domain === "organization" ? "기관을 찾을 수 없어요" :
+            domain === "video" ? "영상을 찾을 수 없어요" :
+              domain === "performance" ? "공연을 찾을 수 없어요" :
+                "대회를 찾을 수 없어요";
+      throw new HttpsError("not-found", msg);
     }
     const existing = docSnap.data() ?? {};
     const contextLine = buildContextLine(existing, domain);
@@ -341,6 +412,8 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
         return extractPerformance(input, OPENAI_KEY.value());
       case "video":
         return extractVideo(input, OPENAI_KEY.value());
+      case "organization":
+        return extractOrganization(input, OPENAI_KEY.value());
       case "competition":
       default:
         return extractCompetition(input, OPENAI_KEY.value());
@@ -414,6 +487,10 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
 
     if (changedFields.length > 0) {
       patch.lastUpdatedAt = FieldValue.serverTimestamp();
+      // Orgs also bump `updatedAt` (used by admin-queue sort).
+      if (domain === "organization") {
+        patch.updatedAt = FieldValue.serverTimestamp();
+      }
       await docRef.update(patch);
 
       const dataRec = extractionResult.data as unknown as Record<string, unknown>;
@@ -421,7 +498,7 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
         domain === "admission" ?
           `${existing.schoolName ?? ""} ${existing.department ?? ""}`.trim() ||
             docId :
-          domain === "performance" ?
+          domain === "performance" || domain === "video" ?
             (existing.title as string) || docId :
             (existing.name as string) || docId;
 
@@ -447,11 +524,19 @@ export const extractFromInput = onCall<CallRequest, Promise<CallResponse>>(
       confidence: extractionResult.data.aiConfidence,
     });
 
+    // logoCandidates lives only in the response (transient — operator picks one
+    // and downloadOrgLogo persists the chosen one).
+    const logoCandidates =
+      domain === "organization" ?
+        (extractionResult.data as OrganizationExtractionResult).logoCandidates :
+        undefined;
+
     return {
       success: true,
       fieldsUpdated: changedFields,
       confidence: extractionResult.data.aiConfidence,
       fieldNotes: extractionResult.data.aiFieldNotes,
+      ...(logoCandidates && logoCandidates.length > 0 ? {logoCandidates} : {}),
     };
   },
 );
