@@ -33,6 +33,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── Performances (M8) ───
+    // Mirrors the competitions rule: public read on PUBLISHED, editors can
+    // mutate non-PUBLISHED, only admins can mark PUBLISHED.
+    match /performances/{id} {
+      allow read: if resource.data.status == 'PUBLISHED' || isEditor();
+      allow create: if isEditor()
+        && request.resource.data.status in ['DRAFT','IN_REVIEW','READY'];
+      allow update: if isEditor()
+        && request.resource.data.status in ['DRAFT','IN_REVIEW','READY','ARCHIVED'];
+      allow update: if isAdmin()
+        && request.resource.data.status == 'PUBLISHED';
+      allow delete: if isAdmin();
+    }
+
     // ─── Videos ───
     match /videos/{id} {
       allow read: if resource.data.status == 'PUBLISHED' || isEditor();
