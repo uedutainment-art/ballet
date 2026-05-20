@@ -15,7 +15,8 @@
     "seed:organizations": "tsx scripts/seed-organizations.ts",
     "backfill:orgs": "tsx scripts/backfill-org-references.ts",
     "migrate:crawl": "tsx scripts/migrate-crawl-fields.ts",
-    "migrate:legacy-sources": "tsx scripts/migrate-legacy-sources.ts"
+    "migrate:legacy-sources": "tsx scripts/migrate-legacy-sources.ts",
+    "seed:bfk-2026": "tsx scripts/seed-bfk-2026.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
