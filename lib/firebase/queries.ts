@@ -194,24 +194,31 @@ export async function getAdmissionById(
   }
 }
 
-// Returns PUBLISHED admissions whose registration starts within the next
-// `daysAhead` days, plus any already-open windows.
+// Returns PUBLISHED admissions whose registration window hasn't closed yet.
+// Sorted ascending by regStart (handled by listPublishedAdmissions) so the
+// soonest-opening admission shows first. Used by the home page's "최신
+// 입시정보" slot. Note: no upper-bound on how far in the future regStart
+// can be — ballet admission cycles are routinely announced 4~6 months out
+// (예원·선화예중 9월, 한예종 10~11월), and a 90-day "imminent" window would
+// hide everything during the off-season.
+//
+// The `daysAhead` argument is kept for backward compatibility but no longer
+// drives the filter; callers can ignore it.
 export async function listUrgentAdmissions(
   n: number,
-  daysAhead = 60,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _daysAhead = 60,
 ): Promise<Admission[]> {
   try {
     const all = await listPublishedAdmissions({ limit: 100 });
     const now = Date.now();
-    const horizon = now + daysAhead * 24 * 60 * 60 * 1000;
-    const filtered = all.filter((a) => {
+    const open = all.filter((a) => {
       const regEnd = a.regEnd?.toMillis();
-      const regStart = a.regStart?.toMillis();
-      if (regEnd && regEnd < now) return false; // closed
-      if (regStart && regStart > horizon) return false; // too far out
+      // Drop only already-closed admissions. Future admissions are kept.
+      if (regEnd && regEnd < now) return false;
       return true;
     });
-    return filtered.slice(0, n);
+    return open.slice(0, n);
   } catch (err) {
     console.error("[queries] listUrgentAdmissions failed:", err);
     return [];
