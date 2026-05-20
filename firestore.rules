@@ -97,5 +97,12 @@ service cloud.firestore {
       allow read: if isEditor();
       allow write: if false;
     }
+
+    // ─── Crawl run history (M11) ───
+    // Functions write via Admin SDK; editors read to surface /admin/crawl-runs.
+    match /crawlRuns/{id} {
+      allow read: if isEditor();
+      allow write: if false;
+    }
   }
 }

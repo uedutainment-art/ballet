@@ -8,6 +8,10 @@
 
 export {extractFromPoster} from "./push/extractFromPoster";
 export {pullCrawlerScheduled} from "./pull/scheduler";
-export {pullCrawlerManual} from "./pull/manualTrigger";
+export {
+  pullCrawlerManual,
+  triggerCrawlForOrg,
+  resetOrgSeenHashes,
+} from "./pull/manualTrigger";
 export {extractFromInput} from "./extract/extractFromInput";
 export {downloadOrgLogo} from "./organization/downloadLogo";

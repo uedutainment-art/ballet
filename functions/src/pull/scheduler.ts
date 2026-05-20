@@ -1,17 +1,20 @@
+// M11: Weekly pull crawler scheduler.
+//
+// Runs every Monday at 08:00 KST. Iterates /organizations where
+// crawlEnabled == true && status == ACTIVE and dispatches per domain board URL.
+// All bookkeeping lives in /crawlRuns/{runId}.
+
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {defineSecret} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import {getApps, initializeApp} from "firebase-admin/app";
-import {runCrawl} from "./runCrawl";
+import {runAllCrawls} from "./runner";
 
 if (getApps().length === 0) {
   initializeApp();
 }
 
 const OPENAI_KEY = defineSecret("OPENAI_API_KEY");
-
-// Runs every Monday 08:00 KST. The scheduler creates a Cloud Scheduler job
-// on first deploy.
 
 export const pullCrawlerScheduled = onSchedule(
   {
@@ -24,10 +27,10 @@ export const pullCrawlerScheduled = onSchedule(
   },
   async () => {
     const apiKey = OPENAI_KEY.value();
-    const result = await runCrawl(apiKey);
-    logger.info("[pull-scheduled] done", {
-      newDrafts: result.newDrafts,
-      totalExtracted: result.totalExtracted,
+    const result = await runAllCrawls({
+      triggerType: "SCHEDULED",
+      apiKey,
     });
+    logger.info("[pull-scheduled] done", result);
   },
 );

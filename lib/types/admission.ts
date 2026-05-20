@@ -1,5 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 import type { ContentStatus } from "./status";
+import type { CrawlMeta } from "./crawlRun";
 
 export type SchoolType = "middle" | "high" | "university" | "grad";
 
@@ -42,6 +43,8 @@ export interface Admission {
   notes?: string;
   aiConfidence?: number;
   aiFieldNotes?: Record<string, string>;
+  // M11: Provenance for crawler-created DRAFTs.
+  crawlMeta?: CrawlMeta;
 }
 
 export const SCHOOL_TYPE_LABELS: Record<SchoolType, string> = {

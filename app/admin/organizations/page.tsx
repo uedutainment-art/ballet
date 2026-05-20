@@ -10,6 +10,7 @@ import {
   countByStatusOrganizations,
   listOrganizationsByStatus,
 } from "@/lib/firebase/admin-queries";
+import { HealthDot } from "@/components/admin/HealthDot";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -20,6 +21,8 @@ import {
   type Organization,
   type OrgType,
 } from "@/lib/types/organization";
+import { computeHealth, HEALTH_LABELS, type HealthLevel } from "@/lib/organization/health";
+import { relativeTimeKo } from "@/lib/utils/relativeTime";
 import type { ContentStatus } from "@/lib/types/status";
 import { cn } from "@/lib/cn";
 
@@ -63,6 +66,8 @@ function Inner() {
   const [items, setItems] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<OrgType | "all">("all");
+  const [healthFilter, setHealthFilter] = useState<HealthLevel | "all">("all");
+  const [crawlOnly, setCrawlOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
 
@@ -120,10 +125,11 @@ function Inner() {
     }
   }
 
-  const visible =
-    typeFilter === "all"
-      ? items
-      : items.filter((o) => o.type === typeFilter);
+  let visible = typeFilter === "all" ? items : items.filter((o) => o.type === typeFilter);
+  if (crawlOnly) visible = visible.filter((o) => o.crawlEnabled === true);
+  if (healthFilter !== "all") {
+    visible = visible.filter((o) => computeHealth(o) === healthFilter);
+  }
 
   return (
     <div className="space-y-6">
@@ -179,35 +185,65 @@ function Inner() {
         ))}
       </div>
 
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-warm-gray">유형 필터:</span>
-        <button
-          type="button"
-          onClick={() => setTypeFilter("all")}
-          className={cn(
-            "px-2 py-1 rounded-sm border",
-            typeFilter === "all"
-              ? "bg-ink text-white border-ink"
-              : "border-border text-warm-gray hover:text-ink",
-          )}
-        >
-          전체
-        </button>
-        {(Object.keys(ORG_TYPE_LABELS) as OrgType[]).map((t) => (
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-warm-gray">유형 필터:</span>
           <button
-            key={t}
             type="button"
-            onClick={() => setTypeFilter(t)}
+            onClick={() => setTypeFilter("all")}
             className={cn(
               "px-2 py-1 rounded-sm border",
-              typeFilter === t
+              typeFilter === "all"
                 ? "bg-ink text-white border-ink"
                 : "border-border text-warm-gray hover:text-ink",
             )}
           >
-            {ORG_TYPE_LABELS[t]}
+            전체
           </button>
-        ))}
+          {(Object.keys(ORG_TYPE_LABELS) as OrgType[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTypeFilter(t)}
+              className={cn(
+                "px-2 py-1 rounded-sm border",
+                typeFilter === t
+                  ? "bg-ink text-white border-ink"
+                  : "border-border text-warm-gray hover:text-ink",
+              )}
+            >
+              {ORG_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={crawlOnly}
+              onChange={(e) => setCrawlOnly(e.target.checked)}
+              className="accent-brand"
+            />
+            <span className="text-warm-gray">자동수집 활성화만</span>
+          </label>
+          <span className="text-warm-gray">신호등:</span>
+          {(["all", "GREEN", "YELLOW", "RED", "INACTIVE"] as const).map((h) => (
+            <button
+              key={h}
+              type="button"
+              onClick={() => setHealthFilter(h)}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-1 rounded-sm border",
+                healthFilter === h
+                  ? "bg-ink text-white border-ink"
+                  : "border-border text-warm-gray hover:text-ink",
+              )}
+            >
+              {h !== "all" ? <HealthDot level={h} size={8} /> : null}
+              {h === "all" ? "전체" : HEALTH_LABELS[h]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -225,52 +261,67 @@ function Inner() {
               <tr>
                 <th className="text-left px-3 py-2 text-xs font-normal w-12"></th>
                 <th className="text-left px-3 py-2 text-xs font-normal">이름</th>
-                <th className="text-left px-3 py-2 text-xs font-normal">약칭</th>
                 <th className="text-left px-3 py-2 text-xs font-normal">유형</th>
                 <th className="text-left px-3 py-2 text-xs font-normal">지역</th>
-                <th className="text-left px-3 py-2 text-xs font-normal">활성</th>
+                <th className="text-left px-3 py-2 text-xs font-normal">크롤</th>
+                <th className="text-left px-3 py-2 text-xs font-normal">최근 실행</th>
+                <th className="text-right px-3 py-2 text-xs font-normal">누적</th>
                 <th className="text-left px-3 py-2 text-xs font-normal">상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {visible.map((o) => (
-                <tr key={o.id} className="hover:bg-cream-start/20">
-                  <td className="px-3 py-2">
-                    <OrgLogoChip
-                      logoUrl={o.logoUrl}
-                      name={o.name}
-                      type={o.type}
-                    />
-                  </td>
-                  <td className="px-3 py-3">
-                    <Link
-                      href={`/admin/organizations/${o.id}`}
-                      className="text-ink hover:underline"
-                    >
-                      {o.name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3 text-warm-gray text-xs">
-                    {o.shortName ?? "—"}
-                  </td>
-                  <td className="px-3 py-3 text-warm-gray text-xs">
-                    {ORG_TYPE_LABELS[o.type]}
-                  </td>
-                  <td className="px-3 py-3 text-warm-gray text-xs">
-                    {o.region ?? "—"}
-                  </td>
-                  <td className="px-3 py-3 text-xs">
-                    {o.status === "ACTIVE" ? (
-                      <span className="text-green-600">활성</span>
-                    ) : (
-                      <span className="text-warm-gray/60">비활성</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3">
-                    <StatusBadge status={o.workflowState} />
-                  </td>
-                </tr>
-              ))}
+              {visible.map((o) => {
+                const health = computeHealth(o);
+                return (
+                  <tr key={o.id} className="hover:bg-cream-start/20">
+                    <td className="px-3 py-2">
+                      <OrgLogoChip
+                        logoUrl={o.logoUrl}
+                        name={o.name}
+                        type={o.type}
+                      />
+                    </td>
+                    <td className="px-3 py-3">
+                      <Link
+                        href={`/admin/organizations/${o.id}`}
+                        className="text-ink hover:underline"
+                      >
+                        {o.name}
+                      </Link>
+                      {o.shortName ? (
+                        <div className="text-[10px] text-warm-gray/70 mt-0.5">
+                          {o.shortName}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3 text-warm-gray text-xs">
+                      {ORG_TYPE_LABELS[o.type]}
+                    </td>
+                    <td className="px-3 py-3 text-warm-gray text-xs">
+                      {o.region ?? "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        <HealthDot level={health} />
+                        <span className="text-[10px] text-warm-gray">
+                          {HEALTH_LABELS[health]}
+                        </span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-warm-gray text-xs">
+                      {o.crawlEnabled
+                        ? relativeTimeKo(o.crawlStatus?.lastRunAt)
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-warm-gray text-xs font-mono text-right">
+                      {o.crawlStatus?.totalCollected ?? 0}
+                    </td>
+                    <td className="px-3 py-3">
+                      <StatusBadge status={o.workflowState} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

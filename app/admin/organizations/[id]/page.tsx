@@ -10,6 +10,7 @@ import { db } from "@/lib/firebase/client";
 import { getOrganizationById } from "@/lib/firebase/queries";
 import { recordEdit } from "@/lib/firebase/editLogs";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { OrgCrawlSection } from "@/components/admin/OrgCrawlSection";
 import { OrgFieldsPane } from "@/components/admin/OrgFieldsPane";
 import { OrgLogoSection } from "@/components/admin/OrgLogoSection";
 import { SourcePane } from "@/components/admin/SourcePane";
@@ -56,6 +57,13 @@ function orgToForm(o: Organization): OrganizationFormValues {
     tagsCsv: (o.tags ?? []).join(", "),
     status: o.status,
     notes: o.notes ?? "",
+    // M11 crawl config (flat fields → nested crawlConfig on save).
+    crawlEnabled: o.crawlEnabled ?? false,
+    competitionBoardUrl: o.crawlConfig?.competitionBoardUrl ?? "",
+    admissionBoardUrl: o.crawlConfig?.admissionBoardUrl ?? "",
+    performanceBoardUrl: o.crawlConfig?.performanceBoardUrl ?? "",
+    excludeUrlPattern: o.crawlConfig?.excludeUrlPattern ?? "",
+    crawlUserAgent: o.crawlConfig?.userAgent ?? "",
   };
 }
 
@@ -91,6 +99,18 @@ function formToPatch(v: OrganizationFormValues): Record<string, unknown> {
   if (v.youtubeUrl) social.youtube = v.youtubeUrl;
   if (v.facebookUrl) social.facebook = v.facebookUrl;
   patch.socialLinks = social;
+
+  // M11: flat form fields → nested crawlConfig. We always write the toggle;
+  // for sub-fields we only persist the ones the operator filled in (keeps
+  // the doc clean of empty strings).
+  patch.crawlEnabled = v.crawlEnabled ?? false;
+  const crawlConfig: Record<string, string> = {};
+  if (v.competitionBoardUrl) crawlConfig.competitionBoardUrl = v.competitionBoardUrl.trim();
+  if (v.admissionBoardUrl) crawlConfig.admissionBoardUrl = v.admissionBoardUrl.trim();
+  if (v.performanceBoardUrl) crawlConfig.performanceBoardUrl = v.performanceBoardUrl.trim();
+  if (v.excludeUrlPattern) crawlConfig.excludeUrlPattern = v.excludeUrlPattern.trim();
+  if (v.crawlUserAgent) crawlConfig.userAgent = v.crawlUserAgent.trim();
+  patch.crawlConfig = crawlConfig;
   return patch;
 }
 
@@ -387,26 +407,39 @@ export default function OrgEditorPage() {
             }}
             onReExtracted={onReExtracted}
           />
-          <OrgFieldsPane
-            aiConfidence={org.aiConfidence}
-            aiFieldNotes={org.aiFieldNotes}
-            autosave={autosaveStatus}
-            recentlyUpdated={recentlyUpdated}
-            logoSection={
-              <OrgLogoSection
-                orgId={org.id}
-                orgName={org.name}
-                currentLogoUrl={org.logoUrl}
-                candidates={logoCandidates}
-                onLogoUpdated={(newUrl) => {
-                  setOrg((prev) =>
-                    prev ? { ...prev, logoUrl: newUrl ?? undefined } : prev,
-                  );
-                  if (newUrl) showToast("로고가 저장됐어요");
-                }}
-              />
-            }
-          />
+          <div className="space-y-4">
+            <OrgFieldsPane
+              aiConfidence={org.aiConfidence}
+              aiFieldNotes={org.aiFieldNotes}
+              autosave={autosaveStatus}
+              recentlyUpdated={recentlyUpdated}
+              logoSection={
+                <OrgLogoSection
+                  orgId={org.id}
+                  orgName={org.name}
+                  currentLogoUrl={org.logoUrl}
+                  candidates={logoCandidates}
+                  onLogoUpdated={(newUrl) => {
+                    setOrg((prev) =>
+                      prev ? { ...prev, logoUrl: newUrl ?? undefined } : prev,
+                    );
+                    if (newUrl) showToast("로고가 저장됐어요");
+                  }}
+                />
+              }
+            />
+            <OrgCrawlSection
+              org={org}
+              onCrawlFinished={async () => {
+                // Reload the org doc so status block reflects the new run.
+                const { getOrganizationById: refetch } = await import(
+                  "@/lib/firebase/queries"
+                );
+                const fresh = await refetch(org.id);
+                if (fresh) setOrg(fresh);
+              }}
+            />
+          </div>
         </div>
 
         <StatusTransitionBar

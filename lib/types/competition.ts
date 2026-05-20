@@ -1,5 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 import type { ContentStatus } from "./status";
+import type { CrawlMeta } from "./crawlRun";
 
 export type CompetitionCategory =
   | "domestic_major" // 국내 대형
@@ -46,6 +47,9 @@ export interface Competition {
   // Set by the AI ingestion pipeline (T6). Optional until that lands.
   aiConfidence?: number;
   aiFieldNotes?: Record<string, string>;
+  // M11: Provenance for crawler-created DRAFTs. Absent on manual entries
+  // and on legacy docs created before M11.
+  crawlMeta?: CrawlMeta;
 }
 
 export const CATEGORY_LABELS: Record<CompetitionCategory, string> = {

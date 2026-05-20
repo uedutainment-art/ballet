@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import {
   approveCompetition,
@@ -9,8 +9,14 @@ import {
 import { isAdminOrAbove } from "@/lib/types/user";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import {
+  SourceBadge,
+  matchesSourceFilter,
+  type SourceFilterKey,
+} from "@/components/admin/SourceBadge";
 import { formatDate } from "@/lib/format";
 import type { Competition } from "@/lib/types/competition";
+import { cn } from "@/lib/cn";
 
 export default function QueuePage() {
   const { user, userDoc } = useAuth();
@@ -18,6 +24,29 @@ export default function QueuePage() {
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilterKey>("all");
+  const [orgFilter, setOrgFilter] = useState<string>("all");
+
+  const visible = useMemo(
+    () =>
+      items.filter((c) => {
+        if (!matchesSourceFilter(sourceFilter, c)) return false;
+        if (orgFilter !== "all") {
+          if (c.crawlMeta?.sourceOrgId !== orgFilter) return false;
+        }
+        return true;
+      }),
+    [items, sourceFilter, orgFilter],
+  );
+  const orgOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of items) {
+      if (c.crawlMeta?.sourceOrgId && c.crawlMeta.sourceOrgName) {
+        map.set(c.crawlMeta.sourceOrgId, c.crawlMeta.sourceOrgName);
+      }
+    }
+    return Array.from(map.entries());
+  }, [items]);
 
   const canApprove = isAdminOrAbove(userDoc?.role);
 
@@ -68,17 +97,59 @@ export default function QueuePage() {
         </div>
       ) : null}
 
+      <div className="flex items-center gap-3 flex-wrap text-xs">
+        <span className="text-warm-gray">출처:</span>
+        {(
+          [
+            { k: "all", label: "전체" },
+            { k: "pull", label: "자동수집" },
+            { k: "push", label: "익명 제보" },
+            { k: "manual", label: "수동 입력" },
+          ] as Array<{ k: SourceFilterKey; label: string }>
+        ).map((s) => (
+          <button
+            key={s.k}
+            type="button"
+            onClick={() => setSourceFilter(s.k)}
+            className={cn(
+              "px-2 py-1 rounded-sm border",
+              sourceFilter === s.k
+                ? "bg-ink text-white border-ink"
+                : "border-border text-warm-gray hover:text-ink",
+            )}
+          >
+            {s.label}
+          </button>
+        ))}
+        {sourceFilter === "pull" && orgOptions.length > 0 ? (
+          <select
+            value={orgFilter}
+            onChange={(e) => setOrgFilter(e.target.value)}
+            className="border border-border rounded-sm text-xs px-2 py-1"
+          >
+            <option value="all">기관 전체</option>
+            {orgOptions.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
+
       {loading ? (
         <div className="bg-white border border-border rounded-md p-12 text-center text-sm text-warm-gray">
           불러오는 중…
         </div>
-      ) : items.length === 0 ? (
+      ) : visible.length === 0 ? (
         <div className="bg-white border border-border rounded-md p-12 text-center text-sm text-warm-gray">
-          승인 대기 중인 항목이 없어요
+          {items.length === 0
+            ? "승인 대기 중인 항목이 없어요"
+            : "필터에 맞는 항목이 없어요"}
         </div>
       ) : (
         <ul className="bg-white border border-border rounded-md divide-y divide-border">
-          {items.map((c) => (
+          {visible.map((c) => (
             <li
               key={c.id}
               className="px-4 py-3 flex items-center gap-3"
@@ -86,8 +157,11 @@ export default function QueuePage() {
               <StatusBadge status={c.status} />
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-ink truncate">{c.name}</div>
-                <div className="text-[11px] text-warm-gray truncate">
+                <div className="text-[11px] text-warm-gray truncate mt-0.5">
                   {c.host} · 수집 {formatDate(c.aiCollectedAt)}
+                </div>
+                <div className="mt-1">
+                  <SourceBadge crawlMeta={c.crawlMeta} source={c.source} />
                 </div>
               </div>
               {canApprove ? (

@@ -49,6 +49,12 @@ const items: NavItem[] = [
     visible: () => true,
   },
   {
+    label: "자동수집 이력",
+    href: "/admin/crawl-runs",
+    enabled: true,
+    visible: () => true,
+  },
+  {
     label: "승인 큐",
     href: "/admin/queue",
     enabled: true,

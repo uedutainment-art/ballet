@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getCountFromServer,
+  getDoc,
   getDocs,
   limit as fbLimit,
   orderBy,
@@ -24,6 +25,7 @@ import type { Admission } from "@/lib/types/admission";
 import type { Performance } from "@/lib/types/performance";
 import type { Video } from "@/lib/types/video";
 import type { Organization } from "@/lib/types/organization";
+import type { CrawlRun } from "@/lib/types/crawlRun";
 import type { ContentStatus } from "@/lib/types/status";
 
 const COL = "competitions";
@@ -297,6 +299,37 @@ export async function countByStatusOrganizations(): Promise<
   } catch (err) {
     console.error("[admin-queries] countByStatusOrganizations failed:", err);
     return { ...EMPTY_COUNTS };
+  }
+}
+
+// ---------- Crawl runs (M11) ----------
+
+export async function listRecentCrawlRuns(
+  limit = 30,
+): Promise<CrawlRun[]> {
+  try {
+    const q = query(
+      collection(db, "crawlRuns"),
+      orderBy("startedAt", "desc"),
+      fbLimit(limit),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CrawlRun));
+  } catch (err) {
+    console.error("[admin-queries] listRecentCrawlRuns failed:", err);
+    return [];
+  }
+}
+
+export async function getCrawlRunById(id: string): Promise<CrawlRun | null> {
+  try {
+    const ref = doc(db, "crawlRuns", id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as CrawlRun;
+  } catch (err) {
+    console.error(`[admin-queries] getCrawlRunById(${id}) failed:`, err);
+    return null;
   }
 }
 

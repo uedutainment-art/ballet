@@ -1,5 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 import type { ContentStatus } from "./status";
+import type { CrawlMeta } from "./crawlRun";
 
 export type CompanyType =
   | "national"
@@ -45,6 +46,8 @@ export interface Performance {
   notes?: string;
   aiConfidence?: number;
   aiFieldNotes?: Record<string, string>;
+  // M11: Provenance for crawler-created DRAFTs.
+  crawlMeta?: CrawlMeta;
 }
 
 export const COMPANY_TYPE_LABELS: Record<CompanyType, string> = {

@@ -57,6 +57,27 @@ export interface Organization {
   status: "ACTIVE" | "INACTIVE";
   workflowState: ContentStatus;
 
+  // M11: Pull-crawler configuration. The crawler queries
+  // `where("crawlEnabled", "==", true)` and routes per-domain board URLs to
+  // the right extractor. `seenUrlHashes` is a small dedup ring buffer (last
+  // ~500 article URLs visited) to avoid re-extracting the same posts.
+  crawlEnabled?: boolean;
+  crawlConfig?: {
+    competitionBoardUrl?: string;
+    admissionBoardUrl?: string;
+    performanceBoardUrl?: string;
+    excludeUrlPattern?: string; // regex applied to article URLs
+    userAgent?: string;         // override KBalletBot/1.0 when site blocks bots
+  };
+  crawlStatus?: {
+    lastRunAt?: Timestamp;
+    lastSuccessAt?: Timestamp;
+    consecutiveFailures?: number;
+    lastError?: string;
+    totalCollected?: number;
+    seenUrlHashes?: string[]; // capped to 500 entries
+  };
+
   // Meta
   aiConfidence?: number;
   aiFieldNotes?: Record<string, string>;
