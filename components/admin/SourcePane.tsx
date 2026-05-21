@@ -36,6 +36,9 @@ export type SourcePaneTarget = {
   // Optional YouTube ID — when present the left-side reference shows the
   // embedded player instead of a poster thumbnail. Used by /admin/videos.
   youtubeId?: string;
+  // Optional video type — when "short" the embed renders at 9:16 in a
+  // narrow column so the player matches the source format.
+  videoType?: "short" | "long" | "live";
   // Optional logo URL — used by /admin/organizations to render the current
   // logo as the "current reference" thumbnail.
   logoUrl?: string;
@@ -372,10 +375,19 @@ function OriginalSource({target}: {target: SourcePaneTarget}) {
   // Video domain: render the YouTube embed inline so the editor can preview
   // the actual video they're cataloguing without leaving the page.
   if (target.domain === "video" && target.youtubeId) {
+    const isShort = target.videoType === "short";
     return (
       <div className="space-y-2 pb-3 border-b border-border">
-        <div className="text-xs text-warm-gray">📺 현재 영상</div>
-        <div className="relative aspect-video bg-black rounded-sm overflow-hidden">
+        <div className="text-xs text-warm-gray">
+          {isShort ? "📱 현재 영상 (쇼츠)" : "📺 현재 영상"}
+        </div>
+        <div
+          className={
+            isShort ?
+              "relative aspect-[9/16] max-w-[240px] mx-auto bg-black rounded-sm overflow-hidden" :
+              "relative aspect-video bg-black rounded-sm overflow-hidden"
+          }
+        >
           <iframe
             src={`https://www.youtube.com/embed/${target.youtubeId}?rel=0&modestbranding=1`}
             title="현재 영상"

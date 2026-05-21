@@ -359,6 +359,7 @@ export default function VideoEditorPage() {
               id: video.id,
               domain: "video",
               youtubeId: previewId,
+              videoType: video.type,
               officialUrl: video.youtubeUrl,
               accentColorFrom: accentColor,
               accentColorTo: accentColor,

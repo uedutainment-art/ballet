@@ -7,31 +7,51 @@ import {
   type Video,
 } from "@/lib/types/video";
 import { formatDuration, getThumbnailUrl } from "@/lib/utils/youtube";
+import { cn } from "@/lib/cn";
 
 type Props = {
   video: Video;
 };
 
+// Shorts (type === "short") use a 9:16 frame to match the source format.
+// hqdefault.jpg still letterboxes short content with black bars top+bottom,
+// so we render against bg-black and rely on object-cover to crop the bars
+// out of the visible area — same trick used by YouTube's own grid.
 export function VideoCard({ video: v }: Props) {
   const thumb = v.thumbnailUrl || getThumbnailUrl(v.youtubeId);
   const duration = formatDuration(v.durationSeconds);
+  const isShort = v.type === "short";
 
   return (
     <Link
       href={`/videos/${v.id}`}
       className="group block border border-border rounded-md bg-white overflow-hidden transition-transform hover:-translate-y-px"
     >
-      <div className="relative aspect-video bg-cream-start/40">
+      <div
+        className={cn(
+          "relative bg-black",
+          isShort ? "aspect-[9/16]" : "aspect-video bg-cream-start/40",
+        )}
+      >
         <Image
           src={thumb}
           alt=""
           fill
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          sizes={
+            isShort
+              ? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          }
           className="object-cover"
         />
         {duration ? (
           <div className="absolute bottom-2 right-2 inline-flex items-center text-[10px] px-2 py-[3px] rounded-sm bg-ink/85 text-white font-mono">
             {duration}
+          </div>
+        ) : null}
+        {isShort ? (
+          <div className="absolute top-2 right-2 inline-flex items-center text-[10px] px-2 py-[3px] rounded-sm bg-red-600 text-white font-medium">
+            쇼츠
           </div>
         ) : null}
         {v.level ? (

@@ -90,8 +90,16 @@ export default async function VideoDetailPage({
           <span className="text-ink">{v.title}</span>
         </nav>
 
-        {/* Responsive YouTube embed */}
-        <div className="relative w-full aspect-video bg-black rounded-md overflow-hidden border border-border">
+        {/* Responsive YouTube embed. Shorts use 9:16 in a narrow centered
+            column so the player matches the source format and doesn't get
+            stretched into a giant landscape rectangle. */}
+        <div
+          className={
+            v.type === "short"
+              ? "relative w-full max-w-[360px] mx-auto aspect-[9/16] bg-black rounded-md overflow-hidden border border-border"
+              : "relative w-full aspect-video bg-black rounded-md overflow-hidden border border-border"
+          }
+        >
           <iframe
             src={getEmbedUrl(v.youtubeId)}
             title={v.title}
