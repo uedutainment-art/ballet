@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import {
   ExternalLink,
   Globe,
@@ -7,6 +8,8 @@ import {
   MapPin,
   Phone,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
+import type { Organization } from "@/lib/types/organization";
 import { CompetitionCard } from "@/components/public/CompetitionCard";
 import { AdmissionCard } from "@/components/public/AdmissionCard";
 import { PerformanceCard } from "@/components/public/PerformanceCard";
@@ -252,8 +255,55 @@ export default async function OrgDetailPage({
           </div>
         </div>
       </section>
+
+      <Script
+        id="jsonld-organization"
+        type="application/ld+json"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(buildOrgJsonLd(org)),
+        }}
+      />
     </>
   );
+}
+
+// Organization schema. Universities/high schools/middle schools use the
+// EducationalOrganization specialization for better Google understanding;
+// everything else falls back to the generic Organization type.
+function buildOrgJsonLd(o: Organization) {
+  const isEducation =
+    o.type === "UNIVERSITY" ||
+    o.type === "HIGH_SCHOOL" ||
+    o.type === "MIDDLE_SCHOOL";
+  const sameAs = [
+    o.websiteUrl,
+    o.socialLinks?.instagram,
+    o.socialLinks?.youtube,
+    o.socialLinks?.facebook,
+  ].filter((u): u is string => Boolean(u));
+  return {
+    "@context": "https://schema.org",
+    "@type": isEducation ? "EducationalOrganization" : "Organization",
+    name: o.name,
+    alternateName: o.shortName,
+    url: o.websiteUrl,
+    logo: o.logoUrl,
+    description: o.description,
+    email: o.email,
+    telephone: o.phone,
+    foundingDate: o.establishedYear ? `${o.establishedYear}` : undefined,
+    address: o.region
+      ? {
+          "@type": "PostalAddress",
+          addressCountry: "KR",
+          addressLocality: o.region,
+          streetAddress: o.address,
+        }
+      : undefined,
+    sameAs: sameAs.length > 0 ? sameAs : undefined,
+    mainEntityOfPage: `${SITE_URL}/organizations/${o.id}`,
+  };
 }
 
 function Grid({
