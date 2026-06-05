@@ -5,6 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { recordEdit } from "@/lib/firebase/editLogs";
+import { callRevalidate, publicPathsFor } from "@/lib/admin/revalidate";
 import type { ContentStatus } from "@/lib/types/status";
 import type { EditLogDocType } from "@/lib/types/editLog";
 
@@ -62,8 +63,8 @@ export function transitionToReady(ctx: Ctx, actor: Actor) {
   );
 }
 
-export function transitionToPublished(ctx: Ctx, actor: Actor) {
-  return transition(
+export async function transitionToPublished(ctx: Ctx, actor: Actor) {
+  await transition(
     ctx,
     actor,
     {
@@ -74,6 +75,11 @@ export function transitionToPublished(ctx: Ctx, actor: Actor) {
     "PUBLISHED",
     ["approvedBy", "publishedAt"],
   );
+  // Fire-and-forget — invalidate the ISR cache for the home/list/detail
+  // routes so the freshly-published doc appears immediately without waiting
+  // out the 5-min revalidate window. Failures are logged to the console but
+  // never block the publish.
+  void callRevalidate(publicPathsFor(ctx.docType, ctx.id));
 }
 
 export function transitionToArchived(ctx: Ctx, actor: Actor) {
