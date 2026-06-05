@@ -16,6 +16,7 @@ import { getPerformanceById } from "@/lib/firebase/queries";
 import { recordEdit } from "@/lib/firebase/editLogs";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { PerformanceFieldsPane } from "@/components/admin/PerformanceFieldsPane";
+import { PosterUploadSection } from "@/components/admin/PosterUploadSection";
 import { SourcePane } from "@/components/admin/SourcePane";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusTransitionBar } from "@/components/admin/StatusTransitionBar";
@@ -385,20 +386,33 @@ export default function PerformanceEditorPage() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
-          <SourcePane
-            target={{
-              id: performance.id,
-              domain: "performance",
-              posterUrl: performance.posterUrl,
-              officialUrl: performance.officialUrl,
-              accentColorFrom: gFrom,
-              accentColorTo: gTo,
-              accentLabel: performance.companyType ?
-                COMPANY_TYPE_LABELS[performance.companyType] :
-                "기타",
-            }}
-            onReExtracted={onReExtracted}
-          />
+          <div className="space-y-4">
+            <SourcePane
+              target={{
+                id: performance.id,
+                domain: "performance",
+                posterUrl: performance.posterUrl,
+                officialUrl: performance.officialUrl,
+                accentColorFrom: gFrom,
+                accentColorTo: gTo,
+                accentLabel: performance.companyType ?
+                  COMPANY_TYPE_LABELS[performance.companyType] :
+                  "기타",
+              }}
+              onReExtracted={onReExtracted}
+            />
+            <PosterUploadSection
+              collection="performances"
+              docId={performance.id}
+              currentPosterUrl={performance.posterUrl}
+              onPosterUpdated={(newUrl) => {
+                setPerformance((prev) =>
+                  prev ? { ...prev, posterUrl: newUrl ?? undefined } : prev,
+                );
+                showToast(newUrl ? "포스터가 저장됐어요" : "포스터가 제거됐어요");
+              }}
+            />
+          </div>
           <PerformanceFieldsPane
             aiConfidence={performance.aiConfidence}
             aiFieldNotes={performance.aiFieldNotes}

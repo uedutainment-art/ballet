@@ -16,6 +16,7 @@ import { getCompetitionById } from "@/lib/firebase/queries";
 import { recordEdit } from "@/lib/firebase/editLogs";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { FieldsPane } from "@/components/admin/FieldsPane";
+import { PosterUploadSection } from "@/components/admin/PosterUploadSection";
 import { SourcePane } from "@/components/admin/SourcePane";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatusTransitionBar } from "@/components/admin/StatusTransitionBar";
@@ -394,18 +395,31 @@ export default function EditorPage() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
-          <SourcePane
-            target={{
-              id: competition.id,
-              domain: "competition",
-              posterUrl: competition.posterUrl,
-              officialUrl: competition.officialUrl,
-              accentColorFrom: CATEGORY_GRADIENTS[competition.category][0],
-              accentColorTo: CATEGORY_GRADIENTS[competition.category][1],
-              accentLabel: CATEGORY_LABELS[competition.category],
-            }}
-            onReExtracted={onReExtracted}
-          />
+          <div className="space-y-4">
+            <SourcePane
+              target={{
+                id: competition.id,
+                domain: "competition",
+                posterUrl: competition.posterUrl,
+                officialUrl: competition.officialUrl,
+                accentColorFrom: CATEGORY_GRADIENTS[competition.category][0],
+                accentColorTo: CATEGORY_GRADIENTS[competition.category][1],
+                accentLabel: CATEGORY_LABELS[competition.category],
+              }}
+              onReExtracted={onReExtracted}
+            />
+            <PosterUploadSection
+              collection="competitions"
+              docId={competition.id}
+              currentPosterUrl={competition.posterUrl}
+              onPosterUpdated={(newUrl) => {
+                setCompetition((prev) =>
+                  prev ? { ...prev, posterUrl: newUrl ?? undefined } : prev,
+                );
+                showToast(newUrl ? "포스터가 저장됐어요" : "포스터가 제거됐어요");
+              }}
+            />
+          </div>
           <FieldsPane
             aiConfidence={competition.aiConfidence}
             aiFieldNotes={competition.aiFieldNotes}

@@ -19,10 +19,25 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*|application/pdf');
     }
 
-    // Curated posters (public read; Cloud Functions write only)
-    match /posters/{file=**} {
+    // Curated posters — legacy flat path (kept for any historical objects).
+    // Public read; never writable (Cloud Functions only used the structured
+    // path below in practice).
+    match /posters/{file} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // M12-B editor uploads: posters/competitions/{docId}/* and
+    // posters/performances/{docId}/*. Public read so cards/details render
+    // anywhere; any authenticated user may upload (auth-gating sufficient
+    // since /admin/* is editor-only and the only path that knows the docId).
+    // 5MB cap — real ballet posters routinely exceed the 2MB org-logo cap.
+    match /posters/{collection}/{docId}/{file=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && (collection == 'competitions' || collection == 'performances')
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
 
     // Video thumbnails (public read; Cloud Functions write only)
